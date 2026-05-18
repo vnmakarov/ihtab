@@ -26,9 +26,9 @@ echo "================================================"
 echo ""
 
 # Phase 1: Compile
-if [[ ! -f bench ]] || [[ bench.cpp -nt bench ]] || [[ ihtab.h -nt bench ]] || [[ ixhtab.h -nt bench ]]; then
+if [[ ! -f bench ]] || [[ bench.cpp -nt bench ]] || [[ ../ihtab.h -nt bench ]] || [[ ../ixhtab.h -nt bench ]]; then
   echo "Compiling benchmark..."
-  g++ -I. -std=c++20 -O3 -DNDEBUG -Wall -Wpedantic bench.cpp -o bench
+  g++ -I.. -std=c++20 -O3 -DNDEBUG -Wall -Wpedantic bench.cpp -o bench
   echo "Compilation done."
 else
   echo "Using existing bench binary."

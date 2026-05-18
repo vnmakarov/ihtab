@@ -10,7 +10,7 @@ SRC   = benchmarks/bench.cpp
 .PHONY: test install uninstall clean
 
 test: $(BENCH)
-	./$(BENCH)
+	benchmarks/run_comparison.sh
 
 $(BENCH): $(SRC) ihtab.h ixhtab.h vmum.h
 	$(CXX) $(CXXFLAGS) $(SRC) -o $(BENCH)
