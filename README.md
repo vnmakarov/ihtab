@@ -101,12 +101,32 @@ make test               # build and run vs absl::flat_hash_map
 Benchmarks run against `absl::flat_hash_map` with the vmum hash on
 sizes Small (100), Medium (10 000), Large (1 000 000).
 
-Geometric mean across all benchmarks (lower is better):
+Geometric mean on AMD 9900x across all benchmarks (lower is better):
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   7.8 |  1.000x |
-| ixhtab         |   7.4 |  0.950x |
-| ihtab          |   5.1 |  0.662x |
+| ixhtab         |   7.3 |  0.930x |
+| ihtab          |   5.0 |  0.641x |
 
-`ihtab` is ~34 % faster than absl on average; `ixhtab` is ~5 % faster.
+`ihtab` is ~56 % faster than absl on average; `ixhtab` is ~7 % faster.
+
+Geometric mean on Intel 270K+ across all benchmarks:
+
+| Implementation | ns/op | vs absl |
+|----------------|------:|--------:|
+| absl           |   8.7 |  1.000x |
+| ixhtab         |   7.3 |  0.840x |
+| ihtab          |   5.1 |  0.585x |
+
+`ihtab` is ~71 % faster than absl on average; `ixhtab` is ~19 % faster.
+
+Geometric mean on Apple M4 across all benchmarks:
+
+| Implementation | ns/op | vs absl |
+|----------------|------:|--------:|
+| absl           |   6.1 |  1.000x |
+| ixhtab         |   5.4 |  0.891x |
+| ihtab          |   3.8 |  0.621x |
+
+`ihtab` is ~61 % faster than absl on average; `ixhtab` is ~13 % faster.
