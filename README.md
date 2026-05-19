@@ -41,36 +41,35 @@ Both tables follow the same API.  Define an entry type that bundles key and
 value, plus a hash functor and equality functor, then instantiate.
 
 ```cpp
-#include "ihtab.h"
+#include "ihtab.hpp"
 
 struct Entry { uint64_t key; int value; };
 struct Hash  { ihtab_hash_t operator()(const Entry &e) const { return e.key * 11400714819323198485ULL; } };
 struct Eq    { bool operator()(const Entry &a, const Entry &b) const { return a.key == b.key; } };
 
-using Tab = ihtab_t<Entry, Hash, Eq>;
+using Tab = ihtab<Entry, Hash, Eq>;
 
-Tab t;
-Tab::create(&t, /*min_size=*/64);
+Tab t(64);  // min_size=64; default is 8
 
 // Insert
 Entry e{42, 100};
 Entry *slot;
-if (!Tab::do_(&t, e, IHTAB_INSERT, &slot))
+if (!t.perform(e, IHTAB_INSERT, &slot))
     *slot = e;           // new element — write it
 
 // Lookup
 Entry key{42, 0};
-if (Tab::do_(&t, key, IHTAB_FIND, &slot))
+if (t.perform(key, IHTAB_FIND, &slot))
     printf("%d\n", slot->value);
 
 // Delete
-Tab::do_(&t, key, IHTAB_DELETE, &slot);
+t.perform(key, IHTAB_DELETE, &slot);
 
 // Iterate
-for (auto it = Tab::iter_begin(&t); Tab::iter_valid(it); Tab::iter_next(&t, it))
+for (auto it = t.iter_begin(); Tab::iter_valid(it); t.iter_next(it))
     printf("%llu -> %d\n", it.ptr->key, it.ptr->value);
 
-Tab::destroy(&t);
+// t destroyed automatically at end of scope
 ```
 
 Replace `ihtab_t` / `IHTAB_*` with `ixhtab_t` / `IXHTAB_*` to use ixhtab.
@@ -105,28 +104,28 @@ Geometric mean on AMD 9900x across all benchmarks (lower is better):
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   7.8 |  1.000x |
-| ixhtab         |   7.3 |  0.930x |
-| ihtab          |   5.0 |  0.641x |
+| absl           |   6.4 |  1.000x |
+| ixhtab         |   6.1 |  0.957x |
+| ihtab          |   4.3 |  0.677x |
 
-`ihtab` is ~56 % faster than absl on average; `ixhtab` is ~7 % faster.
+`ihtab` is ~49 % faster than absl on average; `ixhtab` is ~5 % faster.
 
 Geometric mean on Intel 270K+ across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   8.7 |  1.000x |
-| ixhtab         |   7.3 |  0.840x |
-| ihtab          |   5.1 |  0.585x |
+| absl           |   8.8 |  1.000x |
+| ixhtab         |   7.4 |  0.849x |
+| ihtab          |   5.1 |  0.581x |
 
-`ihtab` is ~71 % faster than absl on average; `ixhtab` is ~19 % faster.
-
+`ihtab` is ~73 % faster than absl on average; `ixhtab` is ~19 % faster.
+  
 Geometric mean on Apple M4 across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   6.1 |  1.000x |
-| ixhtab         |   5.4 |  0.891x |
-| ihtab          |   3.8 |  0.621x |
+| absl           |   6.2 |  1.000x |
+| ixhtab         |   5.3 |  0.854x |
+| ihtab          |   3.9 |  0.625x |
 
-`ihtab` is ~61 % faster than absl on average; `ixhtab` is ~13 % faster.
+`ihtab` is ~59 % faster than absl on average; `ixhtab` is ~17 % faster.

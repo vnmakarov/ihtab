@@ -101,7 +101,7 @@ struct ebin_ixhtab_t {
 };
 
 template<typename El, typename Hash, typename Eq>
-struct ixhtab_t {
+class ixhtab {
   unsigned int els_num;
   ixhtab_depth_t max_depth;
   ixhtab_hash_t bin_mask;
@@ -111,15 +111,15 @@ struct ixhtab_t {
   unsigned int bins_num;
   unsigned int bins_capacity;
 
-  static ebin_ixhtab_ind_t create_bin (ixhtab_t *htab, unsigned int size) {
+  ebin_ixhtab_ind_t create_bin ( unsigned int size) {
     if (size < IXHTAB_GROUP_SIZE) size = IXHTAB_GROUP_SIZE;
-    if (htab->bins_num == htab->bins_capacity) {
-      htab->bins_capacity = htab->bins_capacity ? htab->bins_capacity * 2 : 4;
-      htab->bins = (ebin_ixhtab_t<El> *) std::realloc (htab->bins,
-                                                      htab->bins_capacity * sizeof (ebin_ixhtab_t<El>));
+    if (bins_num == bins_capacity) {
+      bins_capacity = bins_capacity ? bins_capacity * 2 : 4;
+      bins = (ebin_ixhtab_t<El> *) std::realloc (bins,
+                                                      bins_capacity * sizeof (ebin_ixhtab_t<El>));
     }
-    ebin_ixhtab_ind_t ind = htab->bins_num++;
-    auto &b = htab->bins[ind];
+    ebin_ixhtab_ind_t ind = bins_num++;
+    auto &b = bins[ind];
     b.els_start = b.els_bound = 0;
     b.els = (El *) std::malloc (size * sizeof (El));
     unsigned int del_bytes = (size + 7) / 8;
@@ -148,36 +148,37 @@ struct ixhtab_t {
     }
   }
 
-  static void create (ixhtab_t *htab, unsigned int min_size) {
+public:
+  ixhtab (unsigned int min_size = 8) {
     unsigned int size;
     for (size = 2; min_size > size; size *= 2);
-    htab->els_num = 0;
-    htab->bins = nullptr;
-    htab->bins_num = 0;
-    htab->bins_capacity = 0;
-    size_t bins_num, bin_power2, bin_size;
-    get_params (size, bins_num, bin_power2, bin_size);
-    htab->max_depth = (ixhtab_depth_t) bin_power2;
-    htab->bin_mask = ((ixhtab_hash_t) 1 << bin_power2) - 1;
-    htab->dir = (ebin_ixhtab_ind_t *) std::malloc (bins_num * sizeof (ebin_ixhtab_ind_t));
-    htab->dir_capacity = (unsigned int) bins_num;
-    for (size_t i = 0; i < bins_num; i++) {
-      htab->dir[i] = (ebin_ixhtab_ind_t) i;
-      ebin_ixhtab_ind_t ind = create_bin (htab, (unsigned int) bin_size);
-      htab->bins[ind].depth = (ixhtab_depth_t) bin_power2;
-      htab->bins[ind].mask = (ixhtab_hash_t) i;
+    els_num = 0;
+    bins = nullptr;
+    bins_num = 0;
+    bins_capacity = 0;
+    size_t bn, bin_power2, bin_size;
+    get_params (size, bn, bin_power2, bin_size);
+    max_depth = (ixhtab_depth_t) bin_power2;
+    bin_mask = ((ixhtab_hash_t) 1 << bin_power2) - 1;
+    dir = (ebin_ixhtab_ind_t *) std::malloc (bn * sizeof (ebin_ixhtab_ind_t));
+    dir_capacity = (unsigned int) bn;
+    for (size_t i = 0; i < bn; i++) {
+      dir[i] = (ebin_ixhtab_ind_t) i;
+      ebin_ixhtab_ind_t ind = create_bin ( (unsigned int) bin_size);
+      bins[ind].depth = (ixhtab_depth_t) bin_power2;
+      bins[ind].mask = (ixhtab_hash_t) i;
     }
   }
 
-  static void destroy (ixhtab_t *htab) {
-    for (unsigned int i = 0; i < htab->bins_num; i++)
-      destroy_bin (htab->bins[i]);
-    std::free (htab->bins);
-    std::free (htab->dir);
-    htab->els_num = 0;
+  ~ixhtab () {
+    for (unsigned int i = 0; i < bins_num; i++)
+      destroy_bin (bins[i]);
+    std::free (bins);
+    std::free (dir);
   }
 
-  static FORCE_INLINE bool do_1 (ixhtab_t *htab, ebin_ixhtab_t<El> &bin, ixhtab_hash_t hash, El &el,
+private:
+  FORCE_INLINE bool do_1 (ebin_ixhtab_t<El> &bin, ixhtab_hash_t hash, El &el,
 				 enum ixhtab_action action, El **res) {
     Eq eq_fn;
     unsigned char h7_val = (hash >> (sizeof (size_t) * 8 - 7)) & 0x7f;
@@ -200,7 +201,7 @@ struct ixhtab_t {
           if (action != IXHTAB_DELETE) {
             *res = &bin.els[el_ind];
           } else {
-            htab->els_num--;
+            els_num--;
             bin.deleted[el_ind / 8] |= 1 << (el_ind % 8);
             bin.entries[slot] = IXHTAB_ENTRY_DELETED;
           }
@@ -212,7 +213,7 @@ struct ixhtab_t {
       auto empty_mask = ixhtab_match_empty (group);
       if (empty_mask) {
         if (action == IXHTAB_INSERT || action == IXHTAB_REPLACE) {
-          htab->els_num++;
+          els_num++;
           unsigned int slot;
           if (first_deleted_slot != ~0u) {
             slot = first_deleted_slot;
@@ -233,30 +234,30 @@ struct ixhtab_t {
     }
   }
 
-  static void split_bin (ixhtab_t *htab, ebin_ixhtab_ind_t bin_ind) {
-    unsigned int size = (htab->bins[bin_ind].groups_mask + 1) * IXHTAB_GROUP_SIZE / 2;
-    ebin_ixhtab_ind_t new_ind = create_bin (htab, size);
+  void split_bin ( ebin_ixhtab_ind_t bin_ind) {
+    unsigned int size = (bins[bin_ind].groups_mask + 1) * IXHTAB_GROUP_SIZE / 2;
+    ebin_ixhtab_ind_t new_ind = create_bin ( size);
     Hash hash_fn;
     for (;;) {
-      auto &new_bin = htab->bins[new_ind];
-      auto &bin = htab->bins[bin_ind];
+      auto &new_bin = bins[new_ind];
+      auto &bin = bins[bin_ind];
       unsigned int entries_size = (bin.groups_mask + 1) * IXHTAB_GROUP_SIZE;
       std::memset (bin.h7, IXHTAB_EMPTY_H7, entries_size);
       ixhtab_hash_t split_mask = (ixhtab_hash_t) 1 << bin.depth;
       new_bin.depth = ++bin.depth;
-      if (bin.depth > htab->max_depth) {
-        htab->max_depth = bin.depth;
-        htab->bin_mask = ~(~(ixhtab_hash_t) 0 << htab->max_depth);
-        unsigned int len = htab->dir_capacity;
-        htab->dir = (ebin_ixhtab_ind_t *) std::realloc (htab->dir, 2 * len * sizeof (ebin_ixhtab_ind_t));
-        htab->dir_capacity = 2 * len;
-        for (unsigned int j = 0; j < len; j++) htab->dir[j + len] = htab->dir[j];
+      if (bin.depth > max_depth) {
+        max_depth = bin.depth;
+        bin_mask = ~(~(ixhtab_hash_t) 0 << max_depth);
+        unsigned int len = dir_capacity;
+        dir = (ebin_ixhtab_ind_t *) std::realloc (dir, 2 * len * sizeof (ebin_ixhtab_ind_t));
+        dir_capacity = 2 * len;
+        for (unsigned int j = 0; j < len; j++) dir[j + len] = dir[j];
       }
       new_bin.mask = bin.mask | split_mask;
-      htab->dir[new_bin.mask] = new_ind;
+      dir[new_bin.mask] = new_ind;
       unsigned int start = bin.els_start, bound = bin.els_bound;
       bin.els_start = bin.els_bound = 0;
-      unsigned int els_num = htab->els_num;
+      unsigned int saved_els_num = els_num;
       bool old_added = false, new_added = false;
       for (unsigned int i = start; i < bound; i++) {
         if (bin.deleted[i / 8] & (1 << (i % 8))) continue;
@@ -265,11 +266,11 @@ struct ixhtab_t {
         bool is_old = (hash & split_mask) == 0;
         if (is_old) old_added = true; else new_added = true;
         El *r;
-        do_1 (htab, is_old ? htab->bins[bin_ind] : htab->bins[new_ind],
+        do_1 ( is_old ? bins[bin_ind] : bins[new_ind],
               hash, bin.els[i], IXHTAB_INSERT, &r);
         *r = bin.els[i];
       }
-      htab->els_num = els_num;
+      els_num = saved_els_num;
       if (!old_added) {
         ebin_ixhtab_ind_t temp = bin_ind;
         bin_ind = new_ind;
@@ -278,33 +279,34 @@ struct ixhtab_t {
         break;
       }
     }
-    auto &ob = htab->bins[bin_ind];
+    auto &ob = bins[bin_ind];
     std::memset (ob.deleted, 0, ((ob.groups_mask + 1) * IXHTAB_GROUP_SIZE / 2 + 7) / 8);
-    auto &nb = htab->bins[new_ind];
+    auto &nb = bins[new_ind];
     std::memset (nb.deleted, 0, ((nb.groups_mask + 1) * IXHTAB_GROUP_SIZE / 2 + 7) / 8);
   }
 
-  static FORCE_INLINE bool do_ (ixhtab_t *htab, El &el, enum ixhtab_action action, El **res) {
+public:
+  FORCE_INLINE bool perform (El &el, enum ixhtab_action action, El **res) {
     Hash hash_fn;
     ixhtab_hash_t hash = hash_fn (el);
     if (hash == 0) hash = 1;
-    ixhtab_hash_t dir_ind = hash & htab->bin_mask;
-    ebin_ixhtab_ind_t bin_ind = htab->dir[dir_ind];
-    auto &bin = htab->bins[bin_ind];
+    ixhtab_hash_t dir_ind = hash & bin_mask;
+    ebin_ixhtab_ind_t bin_ind = dir[dir_ind];
+    auto &bin = bins[bin_ind];
     unsigned int entries_size = (bin.groups_mask + 1) * IXHTAB_GROUP_SIZE;
     unsigned int els_size = entries_size / 2;
     if ((action == IXHTAB_INSERT || action == IXHTAB_REPLACE) && bin.els_bound == els_size) {
       bool grow = false;
-      if (2 * htab->els_num >= entries_size) {
+      if (2 * els_num >= entries_size) {
         entries_size *= 2;
         els_size *= 2;
         grow = true;
       }
       if (grow && els_size >= (1u << IXHTAB_MAX_BIN_SIZE_POWER)) {
-        split_bin (htab, bin_ind);
-        bin_ind = htab->dir[hash & htab->bin_mask];
+        split_bin ( bin_ind);
+        bin_ind = dir[hash & bin_mask];
       } else {
-        auto &b = htab->bins[bin_ind];
+        auto &b = bins[bin_ind];
         char *old_deleted = b.deleted;
         unsigned int del_bytes = (els_size + 7) / 8;
         b.deleted = (char *) std::calloc (del_bytes, 1);
@@ -316,49 +318,54 @@ struct ixhtab_t {
         b.groups_mask = entries_size / IXHTAB_GROUP_SIZE - 1;
         unsigned int start = b.els_start, bound = b.els_bound;
         b.els_start = b.els_bound = 0;
-        htab->els_num = 0;
+        unsigned int saved_els_num = els_num;
+        els_num = 0;
         for (unsigned int i = start; i < bound; i++) {
           if (old_deleted[i / 8] & (1 << (i % 8))) continue;
           ixhtab_hash_t hash2 = hash_fn (b.els[i]);
           if (hash2 == 0) hash2 = 1;
           El *r;
-          do_1 (htab, b, hash2, b.els[i], IXHTAB_INSERT, &r);
+          do_1 ( b, hash2, b.els[i], IXHTAB_INSERT, &r);
           *r = b.els[i];
         }
+        els_num = saved_els_num;
         std::free (old_deleted);
       }
     }
-    return do_1 (htab, htab->bins[bin_ind], hash, el, action, res);
+    return do_1 ( bins[bin_ind], hash, el, action, res);
   }
+
+  unsigned int els_count () const { return els_num; }
+
   struct iterator {
     unsigned int bin_idx;
     unsigned int el_idx;
     El *ptr;
   };
 
-  static FORCE_INLINE void iter_advance (ixhtab_t *htab, iterator &it) {
-    while (it.bin_idx < htab->bins_num) {
-      auto &bin = htab->bins[it.bin_idx];
-      while (it.el_idx < bin.els_bound) {
-        if (!(bin.deleted[it.el_idx / 8] & (1 << (it.el_idx % 8)))) {
-          it.ptr = &bin.els[it.el_idx];
+  FORCE_INLINE void iter_advance (iterator &it) {
+    while (it.bin_idx < bins_num) {
+      auto &b = bins[it.bin_idx];
+      while (it.el_idx < b.els_bound) {
+        if (!(b.deleted[it.el_idx / 8] & (1 << (it.el_idx % 8)))) {
+          it.ptr = &b.els[it.el_idx];
           return;
         }
         ++it.el_idx;
       }
       ++it.bin_idx;
-      if (it.bin_idx < htab->bins_num)
-        it.el_idx = htab->bins[it.bin_idx].els_start;
+      if (it.bin_idx < bins_num)
+        it.el_idx = bins[it.bin_idx].els_start;
     }
     it.ptr = nullptr;
   }
 
-  static FORCE_INLINE iterator iter_begin (ixhtab_t *htab) {
+  FORCE_INLINE iterator iter_begin () {
     iterator it;
     it.bin_idx = 0;
-    it.el_idx = htab->bins_num > 0 ? htab->bins[0].els_start : 0;
+    it.el_idx = bins_num > 0 ? bins[0].els_start : 0;
     it.ptr = nullptr;
-    iter_advance (htab, it);
+    iter_advance (it);
     return it;
   }
 
@@ -366,9 +373,9 @@ struct ixhtab_t {
     return it.ptr != nullptr;
   }
 
-  static FORCE_INLINE void iter_next (ixhtab_t *htab, iterator &it) {
+  FORCE_INLINE void iter_next (iterator &it) {
     ++it.el_idx;
-    iter_advance (htab, it);
+    iter_advance (it);
   }
 };
 

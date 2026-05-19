@@ -177,33 +177,33 @@ static void record(const char *impl, const char *bench, const char *sz, int n, d
 struct ihtab_int_entry { uint64_t key; int value; };
 struct ihtab_int_hash { ihtab_hash_t operator()(const ihtab_int_entry &e) const { return vmum_hash64(e.key, 0); } };
 struct ihtab_int_eq { bool operator()(const ihtab_int_entry &a, const ihtab_int_entry &b) const { return a.key == b.key; } };
-using ihtab_int_t = ihtab_t<ihtab_int_entry, ihtab_int_hash, ihtab_int_eq>;
+using ihtab_int_t = ihtab<ihtab_int_entry, ihtab_int_hash, ihtab_int_eq>;
 
 struct ihtab_str_entry { const char *key; int value; };
 struct ihtab_str_hash { ihtab_hash_t operator()(const ihtab_str_entry &e) const { return vmum_hash(e.key, strlen(e.key), 0); } };
 struct ihtab_str_eq { bool operator()(const ihtab_str_entry &a, const ihtab_str_entry &b) const { return strcmp(a.key, b.key) == 0; } };
-using ihtab_str_t = ihtab_t<ihtab_str_entry, ihtab_str_hash, ihtab_str_eq>;
+using ihtab_str_t = ihtab<ihtab_str_entry, ihtab_str_hash, ihtab_str_eq>;
 
 struct ixhtab_int_entry { uint64_t key; int value; };
 struct ixhtab_int_hash { ixhtab_hash_t operator()(const ixhtab_int_entry &e) const { return vmum_hash64(e.key, 0); } };
 struct ixhtab_int_eq { bool operator()(const ixhtab_int_entry &a, const ixhtab_int_entry &b) const { return a.key == b.key; } };
-using ixhtab_int_t = ixhtab_t<ixhtab_int_entry, ixhtab_int_hash, ixhtab_int_eq>;
+using ixhtab_int_t = ixhtab<ixhtab_int_entry, ixhtab_int_hash, ixhtab_int_eq>;
 
 struct ixhtab_str_entry { const char *key; int value; };
 struct ixhtab_str_hash { ixhtab_hash_t operator()(const ixhtab_str_entry &e) const { return vmum_hash(e.key, strlen(e.key), 0); } };
 struct ixhtab_str_eq { bool operator()(const ixhtab_str_entry &a, const ixhtab_str_entry &b) const { return strcmp(a.key, b.key) == 0; } };
-using ixhtab_str_t = ixhtab_t<ixhtab_str_entry, ixhtab_str_hash, ixhtab_str_eq>;
+using ixhtab_str_t = ixhtab<ixhtab_str_entry, ixhtab_str_hash, ixhtab_str_eq>;
 
 // Large value entry types.
 struct ihtab_lv_entry { uint64_t key; large_value_t value; };
 struct ihtab_lv_hash { ihtab_hash_t operator()(const ihtab_lv_entry &e) const { return vmum_hash64(e.key, 0); } };
 struct ihtab_lv_eq { bool operator()(const ihtab_lv_entry &a, const ihtab_lv_entry &b) const { return a.key == b.key; } };
-using ihtab_lv_t = ihtab_t<ihtab_lv_entry, ihtab_lv_hash, ihtab_lv_eq>;
+using ihtab_lv_t = ihtab<ihtab_lv_entry, ihtab_lv_hash, ihtab_lv_eq>;
 
 struct ixhtab_lv_entry { uint64_t key; large_value_t value; };
 struct ixhtab_lv_hash { ixhtab_hash_t operator()(const ixhtab_lv_entry &e) const { return vmum_hash64(e.key, 0); } };
 struct ixhtab_lv_eq { bool operator()(const ixhtab_lv_entry &a, const ixhtab_lv_entry &b) const { return a.key == b.key; } };
-using ixhtab_lv_t = ixhtab_t<ixhtab_lv_entry, ixhtab_lv_hash, ixhtab_lv_eq>;
+using ixhtab_lv_t = ixhtab<ixhtab_lv_entry, ixhtab_lv_hash, ixhtab_lv_eq>;
 
 // ===== Core benchmarks (Int/Str Insert/Lookup/Delete/Iteration) =====
 
@@ -238,63 +238,61 @@ static void bench_core(int n, const char *sz) {
 
   // --- ixhtab int ---
   record("ixhtab", "IntInsert", sz, n, bench_ns_op([&]{
-    ixhtab_int_t m; ixhtab_int_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!ixhtab_int_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ixhtab_int_t::destroy(&m);
+    ixhtab_int_t m(8);
+    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ixhtab_int_t xm_i; ixhtab_int_t::create(&xm_i, 8);
-  for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!ixhtab_int_t::do_(&xm_i, e, IXHTAB_INSERT, &r)) *r = e; }
+  ixhtab_int_t xm_i(8);
+  for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!xm_i.perform(e, IXHTAB_INSERT, &r)) *r = e; }
 
   record("ixhtab", "IntLookup", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], 0}; ixhtab_int_entry *r; if (ixhtab_int_t::do_(&xm_i, e, IXHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], 0}; ixhtab_int_entry *r; if (xm_i.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
   record("ixhtab", "IntDelete", sz, n, bench_ns_op([&]{
-    ixhtab_int_t mc; ixhtab_int_t::create(&mc, 8);
-    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!ixhtab_int_t::do_(&mc, e, IXHTAB_INSERT, &r)) *r = e; }
-    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], 0}; ixhtab_int_entry *r; ixhtab_int_t::do_(&mc, e, IXHTAB_DELETE, &r); }
-    do_not_optimize = mc.els_num; ixhtab_int_t::destroy(&mc);
+    ixhtab_int_t mc(8);
+    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!mc.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], 0}; ixhtab_int_entry *r; mc.perform(e, IXHTAB_DELETE, &r); }
+    do_not_optimize = mc.els_count();
   }, n));
 
   record("ixhtab", "IntIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = ixhtab_int_t::iter_begin(&xm_i);
-    while (ixhtab_int_t::iter_valid(it)) { s += it.ptr->value; ixhtab_int_t::iter_next(&xm_i, it); }
+    int s = 0; auto it = xm_i.iter_begin();
+    while (ixhtab_int_t::iter_valid(it)) { s += it.ptr->value; xm_i.iter_next(it); }
     do_not_optimize = s;
   }, n));
-  ixhtab_int_t::destroy(&xm_i);
 
   // --- ihtab int ---
   record("ihtab", "IntInsert", sz, n, bench_ns_op([&]{
-    ihtab_int_t m; ihtab_int_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!ihtab_int_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ihtab_int_t::destroy(&m);
+    ihtab_int_t m(8);
+    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ihtab_int_t im_i; ihtab_int_t::create(&im_i, 8);
-  for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!ihtab_int_t::do_(&im_i, e, IHTAB_INSERT, &r)) *r = e; }
+  ihtab_int_t im_i(8);
+  for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!im_i.perform(e, IHTAB_INSERT, &r)) *r = e; }
 
   record("ihtab", "IntLookup", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], 0}; ihtab_int_entry *r; if (ihtab_int_t::do_(&im_i, e, IHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], 0}; ihtab_int_entry *r; if (im_i.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
   record("ihtab", "IntDelete", sz, n, bench_ns_op([&]{
-    ihtab_int_t mc; ihtab_int_t::create(&mc, 8);
-    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!ihtab_int_t::do_(&mc, e, IHTAB_INSERT, &r)) *r = e; }
-    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], 0}; ihtab_int_entry *r; ihtab_int_t::do_(&mc, e, IHTAB_DELETE, &r); }
-    do_not_optimize = mc.els_num; ihtab_int_t::destroy(&mc);
+    ihtab_int_t mc(8);
+    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!mc.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], 0}; ihtab_int_entry *r; mc.perform(e, IHTAB_DELETE, &r); }
+    do_not_optimize = mc.els_count();
   }, n));
 
   record("ihtab", "IntIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = ihtab_int_t::iter_begin(&im_i);
-    while (ihtab_int_t::iter_valid(it)) { s += it.ptr->value; ihtab_int_t::iter_next(&im_i, it); }
+    int s = 0; auto it = im_i.iter_begin();
+    while (ihtab_int_t::iter_valid(it)) { s += it.ptr->value; im_i.iter_next(it); }
     do_not_optimize = s;
   }, n));
-  ihtab_int_t::destroy(&im_i);
 
   if (!include_string) return;
   auto skeys = gen_str_keys(n);
@@ -327,63 +325,61 @@ static void bench_core(int n, const char *sz) {
 
   // --- ixhtab str ---
   record("ixhtab", "StrInsert", sz, n, bench_ns_op([&]{
-    ixhtab_str_t m; ixhtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ixhtab_str_t::destroy(&m);
+    ixhtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ixhtab_str_t xm_s; ixhtab_str_t::create(&xm_s, 8);
-  for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&xm_s, e, IXHTAB_INSERT, &r)) *r = e; }
+  ixhtab_str_t xm_s(8);
+  for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!xm_s.perform(e, IXHTAB_INSERT, &r)) *r = e; }
 
   record("ixhtab", "StrLookup", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], 0}; ixhtab_str_entry *r; if (ixhtab_str_t::do_(&xm_s, e, IXHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], 0}; ixhtab_str_entry *r; if (xm_s.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
   record("ixhtab", "StrDelete", sz, n, bench_ns_op([&]{
-    ixhtab_str_t mc; ixhtab_str_t::create(&mc, 8);
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&mc, e, IXHTAB_INSERT, &r)) *r = e; }
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], 0}; ixhtab_str_entry *r; ixhtab_str_t::do_(&mc, e, IXHTAB_DELETE, &r); }
-    do_not_optimize = mc.els_num; ixhtab_str_t::destroy(&mc);
+    ixhtab_str_t mc(8);
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!mc.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], 0}; ixhtab_str_entry *r; mc.perform(e, IXHTAB_DELETE, &r); }
+    do_not_optimize = mc.els_count();
   }, n));
 
   record("ixhtab", "StrIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = ixhtab_str_t::iter_begin(&xm_s);
-    while (ixhtab_str_t::iter_valid(it)) { s += it.ptr->value; ixhtab_str_t::iter_next(&xm_s, it); }
+    int s = 0; auto it = xm_s.iter_begin();
+    while (ixhtab_str_t::iter_valid(it)) { s += it.ptr->value; xm_s.iter_next(it); }
     do_not_optimize = s;
   }, n));
-  ixhtab_str_t::destroy(&xm_s);
 
   // --- ihtab str ---
   record("ihtab", "StrInsert", sz, n, bench_ns_op([&]{
-    ihtab_str_t m; ihtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ihtab_str_t::destroy(&m);
+    ihtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ihtab_str_t im_s; ihtab_str_t::create(&im_s, 8);
-  for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&im_s, e, IHTAB_INSERT, &r)) *r = e; }
+  ihtab_str_t im_s(8);
+  for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!im_s.perform(e, IHTAB_INSERT, &r)) *r = e; }
 
   record("ihtab", "StrLookup", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], 0}; ihtab_str_entry *r; if (ihtab_str_t::do_(&im_s, e, IHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], 0}; ihtab_str_entry *r; if (im_s.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
   record("ihtab", "StrDelete", sz, n, bench_ns_op([&]{
-    ihtab_str_t mc; ihtab_str_t::create(&mc, 8);
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&mc, e, IHTAB_INSERT, &r)) *r = e; }
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], 0}; ihtab_str_entry *r; ihtab_str_t::do_(&mc, e, IHTAB_DELETE, &r); }
-    do_not_optimize = mc.els_num; ihtab_str_t::destroy(&mc);
+    ihtab_str_t mc(8);
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!mc.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], 0}; ihtab_str_entry *r; mc.perform(e, IHTAB_DELETE, &r); }
+    do_not_optimize = mc.els_count();
   }, n));
 
   record("ihtab", "StrIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = ihtab_str_t::iter_begin(&im_s);
-    while (ihtab_str_t::iter_valid(it)) { s += it.ptr->value; ihtab_str_t::iter_next(&im_s, it); }
+    int s = 0; auto it = im_s.iter_begin();
+    while (ihtab_str_t::iter_valid(it)) { s += it.ptr->value; im_s.iter_next(it); }
     do_not_optimize = s;
   }, n));
-  ihtab_str_t::destroy(&im_s);
 }
 
 // ===== MixedOps: 70% insert, 20% lookup, 10% delete on str keys =====
@@ -404,27 +400,27 @@ static void bench_mixed(int n, const char *sz) {
   }, n));
 
   record("ixhtab", "MixedOps", sz, n, bench_ns_op([&]{
-    ixhtab_str_t m; ixhtab_str_t::create(&m, 8);
+    ixhtab_str_t m(8);
     for (int j = 0; j < n; j++) {
       int op = j % 10;
       ixhtab_str_entry e{keys[j], j}; ixhtab_str_entry *r;
-      if (op < 7) { if (!ixhtab_str_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
-      else if (op < 9) { if (ixhtab_str_t::do_(&m, e, IXHTAB_FIND, &r)) do_not_optimize = r->value; }
-      else ixhtab_str_t::do_(&m, e, IXHTAB_DELETE, &r);
+      if (op < 7) { if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+      else if (op < 9) { if (m.perform(e, IXHTAB_FIND, &r)) do_not_optimize = r->value; }
+      else m.perform(e, IXHTAB_DELETE, &r);
     }
-    do_not_optimize = m.els_num; ixhtab_str_t::destroy(&m);
+    do_not_optimize = m.els_count();
   }, n));
 
   record("ihtab", "MixedOps", sz, n, bench_ns_op([&]{
-    ihtab_str_t m; ihtab_str_t::create(&m, 8);
+    ihtab_str_t m(8);
     for (int j = 0; j < n; j++) {
       int op = j % 10;
       ihtab_str_entry e{keys[j], j}; ihtab_str_entry *r;
-      if (op < 7) { if (!ihtab_str_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
-      else if (op < 9) { if (ihtab_str_t::do_(&m, e, IHTAB_FIND, &r)) do_not_optimize = r->value; }
-      else ihtab_str_t::do_(&m, e, IHTAB_DELETE, &r);
+      if (op < 7) { if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
+      else if (op < 9) { if (m.perform(e, IHTAB_FIND, &r)) do_not_optimize = r->value; }
+      else m.perform(e, IHTAB_DELETE, &r);
     }
-    do_not_optimize = m.els_num; ihtab_str_t::destroy(&m);
+    do_not_optimize = m.els_count();
   }, n));
 }
 
@@ -441,23 +437,21 @@ static void bench_random_access(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
-  ixhtab_str_t xm; ixhtab_str_t::create(&xm, 8);
-  for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&xm, e, IXHTAB_INSERT, &r)) *r = e; }
+  ixhtab_str_t xm(8);
+  for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
   record("ixhtab", "RandomAccess", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (ixhtab_str_t::do_(&xm, e, IXHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
-  ixhtab_str_t::destroy(&xm);
 
-  ihtab_str_t im; ihtab_str_t::create(&im, 8);
-  for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&im, e, IHTAB_INSERT, &r)) *r = e; }
+  ihtab_str_t im(8);
+  for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
   record("ihtab", "RandomAccess", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (ihtab_str_t::do_(&im, e, IHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
-  ihtab_str_t::destroy(&im);
 }
 
 // ===== CacheMiss: lookup keys guaranteed absent (int keys, bit flip) =====
@@ -475,23 +469,21 @@ static void bench_cache_miss(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
-  ixhtab_int_t xm; ixhtab_int_t::create(&xm, 8);
-  for (int i = 0; i < n; i++) { ixhtab_int_entry e{keys[i], i}; ixhtab_int_entry *r; if (!ixhtab_int_t::do_(&xm, e, IXHTAB_INSERT, &r)) *r = e; }
+  ixhtab_int_t xm(8);
+  for (int i = 0; i < n; i++) { ixhtab_int_entry e{keys[i], i}; ixhtab_int_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
   record("ixhtab", "CacheMiss", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ixhtab_int_entry e{missing[i], 0}; ixhtab_int_entry *r; if (ixhtab_int_t::do_(&xm, e, IXHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ixhtab_int_entry e{missing[i], 0}; ixhtab_int_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
-  ixhtab_int_t::destroy(&xm);
 
-  ihtab_int_t im; ihtab_int_t::create(&im, 8);
-  for (int i = 0; i < n; i++) { ihtab_int_entry e{keys[i], i}; ihtab_int_entry *r; if (!ihtab_int_t::do_(&im, e, IHTAB_INSERT, &r)) *r = e; }
+  ihtab_int_t im(8);
+  for (int i = 0; i < n; i++) { ihtab_int_entry e{keys[i], i}; ihtab_int_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
   record("ihtab", "CacheMiss", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ihtab_int_entry e{missing[i], 0}; ihtab_int_entry *r; if (ihtab_int_t::do_(&im, e, IHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ihtab_int_entry e{missing[i], 0}; ihtab_int_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
-  ihtab_int_t::destroy(&im);
 }
 
 // ===== HashCollisions: collision-prone str keys (insert + lookup) =====
@@ -508,19 +500,19 @@ static void bench_collisions(int n, const char *sz) {
   }, n));
 
   record("ixhtab", "HashCollision", sz, n, bench_ns_op([&]{
-    ixhtab_str_t m; ixhtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
+    ixhtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     int s = 0;
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (ixhtab_str_t::do_(&m, e, IXHTAB_FIND, &r)) s += r->value; }
-    do_not_optimize = s; ixhtab_str_t::destroy(&m);
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (m.perform(e, IXHTAB_FIND, &r)) s += r->value; }
+    do_not_optimize = s;
   }, n));
 
   record("ihtab", "HashCollision", sz, n, bench_ns_op([&]{
-    ihtab_str_t m; ihtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
+    ihtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     int s = 0;
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (ihtab_str_t::do_(&m, e, IHTAB_FIND, &r)) s += r->value; }
-    do_not_optimize = s; ihtab_str_t::destroy(&m);
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (m.perform(e, IHTAB_FIND, &r)) s += r->value; }
+    do_not_optimize = s;
   }, n));
 }
 
@@ -544,34 +536,32 @@ static void bench_large_key(int n, const char *sz) {
   }, n));
 
   record("ixhtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
-    ixhtab_str_t m; ixhtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ixhtab_str_t::destroy(&m);
+    ixhtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ixhtab_str_t xm; ixhtab_str_t::create(&xm, 8);
-  for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&xm, e, IXHTAB_INSERT, &r)) *r = e; }
+  ixhtab_str_t xm(8);
+  for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
   record("ixhtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (ixhtab_str_t::do_(&xm, e, IXHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
-  ixhtab_str_t::destroy(&xm);
 
   record("ihtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
-    ihtab_str_t m; ihtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ihtab_str_t::destroy(&m);
+    ihtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ihtab_str_t im; ihtab_str_t::create(&im, 8);
-  for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&im, e, IHTAB_INSERT, &r)) *r = e; }
+  ihtab_str_t im(8);
+  for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
   record("ihtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (ihtab_str_t::do_(&im, e, IHTAB_FIND, &r)) s += r->value; }
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
-  ihtab_str_t::destroy(&im);
 }
 
 // ===== LargeValue: insert + lookup with ~96-byte value struct =====
@@ -593,34 +583,32 @@ static void bench_large_value(int n, const char *sz) {
   }, n));
 
   record("ixhtab", "LargeValIns", sz, n, bench_ns_op([&]{
-    ixhtab_lv_t m; ixhtab_lv_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], make_large_value(i)}; ixhtab_lv_entry *r; if (!ixhtab_lv_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ixhtab_lv_t::destroy(&m);
+    ixhtab_lv_t m(8);
+    for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], make_large_value(i)}; ixhtab_lv_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ixhtab_lv_t xm; ixhtab_lv_t::create(&xm, 8);
-  for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], make_large_value(i)}; ixhtab_lv_entry *r; if (!ixhtab_lv_t::do_(&xm, e, IXHTAB_INSERT, &r)) *r = e; }
+  ixhtab_lv_t xm(8);
+  for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], make_large_value(i)}; ixhtab_lv_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
   record("ixhtab", "LargeValGet", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], {}}; ixhtab_lv_entry *r; if (ixhtab_lv_t::do_(&xm, e, IXHTAB_FIND, &r)) s += r->value.value; }
+    for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], {}}; ixhtab_lv_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value.value; }
     do_not_optimize = s;
   }, n));
-  ixhtab_lv_t::destroy(&xm);
 
   record("ihtab", "LargeValIns", sz, n, bench_ns_op([&]{
-    ihtab_lv_t m; ihtab_lv_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], make_large_value(i)}; ihtab_lv_entry *r; if (!ihtab_lv_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ihtab_lv_t::destroy(&m);
+    ihtab_lv_t m(8);
+    for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], make_large_value(i)}; ihtab_lv_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
-  ihtab_lv_t im; ihtab_lv_t::create(&im, 8);
-  for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], make_large_value(i)}; ihtab_lv_entry *r; if (!ihtab_lv_t::do_(&im, e, IHTAB_INSERT, &r)) *r = e; }
+  ihtab_lv_t im(8);
+  for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], make_large_value(i)}; ihtab_lv_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
   record("ihtab", "LargeValGet", sz, n, bench_ns_op([&]{
     int s = 0;
-    for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], {}}; ihtab_lv_entry *r; if (ihtab_lv_t::do_(&im, e, IHTAB_FIND, &r)) s += r->value.value; }
+    for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], {}}; ihtab_lv_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value.value; }
     do_not_optimize = s;
   }, n));
-  ihtab_lv_t::destroy(&im);
 }
 
 // ===== Growth: insert without pre-allocation =====
@@ -636,15 +624,15 @@ static void bench_growth(int n, const char *sz) {
   }, n));
 
   record("ixhtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
-    ixhtab_str_t m; ixhtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ixhtab_str_t::destroy(&m);
+    ixhtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
   record("ihtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
-    ihtab_str_t m; ihtab_str_t::create(&m, 8);
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ihtab_str_t::destroy(&m);
+    ihtab_str_t m(8);
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
   record("absl", "GrowthPrealloc", sz, n, bench_ns_op([&]{
@@ -655,16 +643,33 @@ static void bench_growth(int n, const char *sz) {
   }, n));
 
   record("ixhtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
-    ixhtab_str_t m; ixhtab_str_t::create(&m, n);
-    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!ixhtab_str_t::do_(&m, e, IXHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ixhtab_str_t::destroy(&m);
+    ixhtab_str_t m(n);
+    for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
 
   record("ihtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
-    ihtab_str_t m; ihtab_str_t::create(&m, n);
-    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!ihtab_str_t::do_(&m, e, IHTAB_INSERT, &r)) *r = e; }
-    do_not_optimize = m.els_num; ihtab_str_t::destroy(&m);
+    ihtab_str_t m(n);
+    for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
+    do_not_optimize = m.els_count();
   }, n));
+}
+
+static void print_geomean() {
+  const char *impls[] = {"absl", "ixhtab", "ihtab"};
+  printf("Geometric mean (ns/op):\n");
+  double absl_gm = 0;
+  for (auto impl : impls) {
+    double sum_log = 0; int cnt = 0;
+    for (auto &r : results)
+      if (strcmp(r.impl, impl) == 0) { sum_log += log(r.ns_op); cnt++; }
+    double gm = cnt > 0 ? exp(sum_log / cnt) : 0;
+    if (strcmp(impl, "absl") == 0) absl_gm = gm;
+    if (absl_gm > 0 && strcmp(impl, "absl") != 0)
+      printf("  %-6s %6.1f ns/op  (%.3fx vs absl)\n", impl, gm, gm / absl_gm);
+    else
+      printf("  %-6s %6.1f ns/op\n", impl, gm);
+  }
 }
 
 // Write CSV.
@@ -718,6 +723,10 @@ int main(int argc, char *argv[]) {
 
   char csv_path[256];
   snprintf(csv_path, sizeof(csv_path), "result_%s.csv", ts);
+
+  printf("\n");
+  print_geomean();
+  printf("\n");
   write_csv(csv_path);
   printf("CSV: %s\n", csv_path);
   printf("do_not_optimize = %zu\n", (size_t)do_not_optimize);
