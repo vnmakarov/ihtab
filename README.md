@@ -18,7 +18,7 @@ array with a deleted-bit check — no empty-slot gaps.
 
 ### ihtab
 
-`ihtab.h` — flat indexed hash table.
+`ihtab.hpp` — flat indexed hash table.
 
 - Single contiguous element array, 32-bit slot indices.
 - 50 % load factor; rebuilds the whole table when full.
@@ -26,7 +26,7 @@ array with a deleted-bit check — no empty-slot gaps.
 
 ### ixhtab
 
-`ixhtab.h` — indexed **extendible** hash table.
+`ixhtab.hpp` — indexed **extendible** hash table.
 
 - Directory of bins, each bin is an ihtab with 16-bit indices (max 2¹⁵
   elements per bin).
@@ -87,7 +87,7 @@ architectures fall back to portable SWAR bit tricks.
 ## Install
 
 ```sh
-make install            # copies ihtab.h and ixhtab.h to /usr/local/include
+make install            # copies ihtab.hpp and ixhtab.hpp to /usr/local/include
 make install PREFIX=~/.local
 make uninstall
 ```

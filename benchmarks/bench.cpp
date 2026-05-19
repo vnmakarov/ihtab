@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -28,8 +29,8 @@ extern "C" {
 }
 #undef static_assert
 
-#include "ihtab.h"
-#include "ixhtab.h"
+#include "ihtab.hpp"
+#include "ixhtab.hpp"
 
 static volatile size_t do_not_optimize;
 static bool include_string = false;

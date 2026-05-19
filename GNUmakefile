@@ -12,16 +12,16 @@ SRC   = benchmarks/bench.cpp
 test: $(BENCH)
 	benchmarks/run_comparison.sh
 
-$(BENCH): $(SRC) ihtab.h ixhtab.h vmum.h
+$(BENCH): $(SRC) ihtab.hpp ixhtab.hpp vmum.h
 	$(CXX) $(CXXFLAGS) $(SRC) -o $(BENCH)
 
 install:
 	install -d $(DESTDIR)$(INCLUDEDIR)
-	install -m 644 ihtab.h  $(DESTDIR)$(INCLUDEDIR)/ihtab.h
-	install -m 644 ixhtab.h $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
+	install -m 644 ihtab.hpp  $(DESTDIR)$(INCLUDEDIR)/ihtab.hpp
+	install -m 644 ixhtab.hpp $(DESTDIR)$(INCLUDEDIR)/ixhtab.hpp
 
 uninstall:
-	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.h $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
+	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.hpp $(DESTDIR)$(INCLUDEDIR)/ixhtab.hpp
 
 clean:
 	$(RM) $(BENCH)
