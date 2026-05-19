@@ -1,4 +1,4 @@
-// bench.cpp — standalone benchmark comparing absl, ihtab, ixhtab
+// bench.cpp — standalone benchmark comparing absl, umap, ihtab, ixhtab
 // Uses vmum.h for hashing. Sizes and benchmarks match Go map benchmarks.
 
 #include <algorithm>
@@ -10,6 +10,7 @@
 #include <cstring>
 #include <random>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // Shim: absl::flat_hash_map
@@ -236,6 +237,32 @@ static void bench_core(int n, const char *sz) {
     int s = 0; for (auto &[k, v] : am_i) s += v; do_not_optimize = s;
   }, n));
 
+  // --- umap int ---
+  record("umap", "IntInsert", sz, n, bench_ns_op([&]{
+    std::unordered_map<uint64_t, int, int_hash> m;
+    for (int i = 0; i < n; i++) m[ikeys[i]] = i;
+    do_not_optimize = m.size();
+  }, n));
+
+  std::unordered_map<uint64_t, int, int_hash> um_i;
+  for (int i = 0; i < n; i++) um_i[ikeys[i]] = i;
+
+  record("umap", "IntLookup", sz, n, bench_ns_op([&]{
+    int s = 0;
+    for (int i = 0; i < n; i++) { auto it = um_i.find(ikeys[i]); if (it != um_i.end()) s += it->second; }
+    do_not_optimize = s;
+  }, n));
+
+  record("umap", "IntDelete", sz, n, bench_ns_op([&]{
+    auto mc = um_i;
+    for (int i = 0; i < n; i++) mc.erase(ikeys[i]);
+    do_not_optimize = mc.size();
+  }, n));
+
+  record("umap", "IntIteration", sz, n, bench_ns_op([&]{
+    int s = 0; for (auto &[k, v] : um_i) s += v; do_not_optimize = s;
+  }, n));
+
   // --- ixhtab int ---
   record("ixhtab", "IntInsert", sz, n, bench_ns_op([&]{
     ixhtab_int_t m(8);
@@ -323,6 +350,32 @@ static void bench_core(int n, const char *sz) {
     int s = 0; for (auto &[k, v] : am_s) s += v; do_not_optimize = s;
   }, n));
 
+  // --- umap str ---
+  record("umap", "StrInsert", sz, n, bench_ns_op([&]{
+    std::unordered_map<const char *, int, cstr_hash, cstr_eq> m;
+    for (int i = 0; i < n; i++) m[skeys[i]] = i;
+    do_not_optimize = m.size();
+  }, n));
+
+  std::unordered_map<const char *, int, cstr_hash, cstr_eq> um_s;
+  for (int i = 0; i < n; i++) um_s[skeys[i]] = i;
+
+  record("umap", "StrLookup", sz, n, bench_ns_op([&]{
+    int s = 0;
+    for (int i = 0; i < n; i++) { auto it = um_s.find(skeys[i]); if (it != um_s.end()) s += it->second; }
+    do_not_optimize = s;
+  }, n));
+
+  record("umap", "StrDelete", sz, n, bench_ns_op([&]{
+    auto mc = um_s;
+    for (int i = 0; i < n; i++) mc.erase(skeys[i]);
+    do_not_optimize = mc.size();
+  }, n));
+
+  record("umap", "StrIteration", sz, n, bench_ns_op([&]{
+    int s = 0; for (auto &[k, v] : um_s) s += v; do_not_optimize = s;
+  }, n));
+
   // --- ixhtab str ---
   record("ixhtab", "StrInsert", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
@@ -399,6 +452,17 @@ static void bench_mixed(int n, const char *sz) {
     do_not_optimize = m.size();
   }, n));
 
+  record("umap", "MixedOps", sz, n, bench_ns_op([&]{
+    std::unordered_map<const char *, int, cstr_hash, cstr_eq> m;
+    for (int j = 0; j < n; j++) {
+      int op = j % 10;
+      if (op < 7) m[keys[j]] = j;
+      else if (op < 9) { auto it = m.find(keys[j]); if (it != m.end()) do_not_optimize = it->second; }
+      else m.erase(keys[j]);
+    }
+    do_not_optimize = m.size();
+  }, n));
+
   record("ixhtab", "MixedOps", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
     for (int j = 0; j < n; j++) {
@@ -437,6 +501,13 @@ static void bench_random_access(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
+  std::unordered_map<const char *, int, cstr_hash, cstr_eq> um;
+  for (int i = 0; i < n; i++) um[keys[i]] = i;
+  record("umap", "RandomAccess", sz, n, bench_ns_op([&]{
+    int s = 0; for (int i = 0; i < n; i++) { auto it = um.find(keys[i]); if (it != um.end()) s += it->second; }
+    do_not_optimize = s;
+  }, n));
+
   ixhtab_str_t xm(8);
   for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
   record("ixhtab", "RandomAccess", sz, n, bench_ns_op([&]{
@@ -469,6 +540,13 @@ static void bench_cache_miss(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
+  std::unordered_map<uint64_t, int, int_hash> um;
+  for (int i = 0; i < n; i++) um[keys[i]] = i;
+  record("umap", "CacheMiss", sz, n, bench_ns_op([&]{
+    int s = 0; for (int i = 0; i < n; i++) { auto it = um.find(missing[i]); if (it != um.end()) s += it->second; }
+    do_not_optimize = s;
+  }, n));
+
   ixhtab_int_t xm(8);
   for (int i = 0; i < n; i++) { ixhtab_int_entry e{keys[i], i}; ixhtab_int_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
   record("ixhtab", "CacheMiss", sz, n, bench_ns_op([&]{
@@ -494,6 +572,13 @@ static void bench_collisions(int n, const char *sz) {
 
   record("absl", "HashCollision", sz, n, bench_ns_op([&]{
     absl::flat_hash_map<const char *, int, cstr_hash, cstr_eq> m;
+    for (int i = 0; i < n; i++) m[keys[i]] = i;
+    int s = 0; for (int i = 0; i < n; i++) { auto it = m.find(keys[i]); if (it != m.end()) s += it->second; }
+    do_not_optimize = s;
+  }, n));
+
+  record("umap", "HashCollision", sz, n, bench_ns_op([&]{
+    std::unordered_map<const char *, int, cstr_hash, cstr_eq> m;
     for (int i = 0; i < n; i++) m[keys[i]] = i;
     int s = 0; for (int i = 0; i < n; i++) { auto it = m.find(keys[i]); if (it != m.end()) s += it->second; }
     do_not_optimize = s;
@@ -532,6 +617,19 @@ static void bench_large_key(int n, const char *sz) {
   for (int i = 0; i < n; i++) am[keys[i]] = i;
   record("absl", "LargeKeyGet", sz, n, bench_ns_op([&]{
     int s = 0; for (int i = 0; i < n; i++) { auto it = am.find(keys[i]); if (it != am.end()) s += it->second; }
+    do_not_optimize = s;
+  }, n));
+
+  record("umap", "LargeKeyIns", sz, n, bench_ns_op([&]{
+    std::unordered_map<const char *, int, cstr_hash, cstr_eq> m;
+    for (int i = 0; i < n; i++) m[keys[i]] = i;
+    do_not_optimize = m.size();
+  }, n));
+
+  std::unordered_map<const char *, int, cstr_hash, cstr_eq> um;
+  for (int i = 0; i < n; i++) um[keys[i]] = i;
+  record("umap", "LargeKeyGet", sz, n, bench_ns_op([&]{
+    int s = 0; for (int i = 0; i < n; i++) { auto it = um.find(keys[i]); if (it != um.end()) s += it->second; }
     do_not_optimize = s;
   }, n));
 
@@ -582,6 +680,19 @@ static void bench_large_value(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
+  record("umap", "LargeValIns", sz, n, bench_ns_op([&]{
+    std::unordered_map<uint64_t, large_value_t, int_hash> m;
+    for (int i = 0; i < n; i++) m[keys[i]] = make_large_value(i);
+    do_not_optimize = m.size();
+  }, n));
+
+  std::unordered_map<uint64_t, large_value_t, int_hash> um;
+  for (int i = 0; i < n; i++) um[keys[i]] = make_large_value(i);
+  record("umap", "LargeValGet", sz, n, bench_ns_op([&]{
+    int s = 0; for (int i = 0; i < n; i++) { auto it = um.find(keys[i]); if (it != um.end()) s += it->second.value; }
+    do_not_optimize = s;
+  }, n));
+
   record("ixhtab", "LargeValIns", sz, n, bench_ns_op([&]{
     ixhtab_lv_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], make_large_value(i)}; ixhtab_lv_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
@@ -623,6 +734,12 @@ static void bench_growth(int n, const char *sz) {
     do_not_optimize = m.size();
   }, n));
 
+  record("umap", "GrowthNoPre", sz, n, bench_ns_op([&]{
+    std::unordered_map<const char *, int, cstr_hash, cstr_eq> m;
+    for (int i = 0; i < n; i++) m[keys[i]] = i;
+    do_not_optimize = m.size();
+  }, n));
+
   record("ixhtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
@@ -642,6 +759,13 @@ static void bench_growth(int n, const char *sz) {
     do_not_optimize = m.size();
   }, n));
 
+  record("umap", "GrowthPrealloc", sz, n, bench_ns_op([&]{
+    std::unordered_map<const char *, int, cstr_hash, cstr_eq> m;
+    m.reserve(n);
+    for (int i = 0; i < n; i++) m[keys[i]] = i;
+    do_not_optimize = m.size();
+  }, n));
+
   record("ixhtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(n);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
@@ -656,7 +780,7 @@ static void bench_growth(int n, const char *sz) {
 }
 
 static void print_geomean() {
-  const char *impls[] = {"absl", "ixhtab", "ihtab"};
+  const char *impls[] = {"absl", "umap", "ixhtab", "ihtab"};
   printf("Geometric mean (ns/op):\n");
   double absl_gm = 0;
   for (auto impl : impls) {
@@ -692,8 +816,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  printf("Hash Table Comparison: absl vs ixhtab vs ihtab\n");
-  printf("================================================\n");
+  printf("Hash Table Comparison: absl vs umap vs ixhtab vs ihtab\n");
+  printf("=======================================================\n");
   printf("Hash: vmum  Sizes:%s Small=100 Medium=10000 Large=1000000\n\n",
          include_tiny ? " Tiny=10" : "");
 
