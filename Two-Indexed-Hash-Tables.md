@@ -107,9 +107,21 @@ t.perform(query, IHTAB_DELETE, &res);
 // Query
 printf("count=%lu size=%lu\n", t.els_count(), t.size());
 
-// Iterate
+// Iterate (range-based for, uses C++ forward iterator)
 for (auto &e : t)
   printf("%u -> %u\n", e.key, e.value);
+
+// Explicit C++ forward iterator
+for (auto it = t.begin(); it != t.end(); ++it)
+  printf("%u -> %u\n", it->key, it->value);
+
+// Lightweight ihtab_iter -- no table pointer, just an element
+// index and a cached element pointer
+auto it = t.iter_begin();
+while (Table::iter_valid(it)) {
+  printf("%u -> %u\n", it.ptr->key, it.ptr->value);
+  t.iter_next(it);
+}
 
 // t destroyed automatically at end of scope
 ```
@@ -120,6 +132,8 @@ ixhtab has the same interface -- just swap the prefix:
 using Table = ixhtab<Entry, MyHash, MyEq>;
 // IXHTAB_INSERT, IXHTAB_REPLACE, IXHTAB_FIND, IXHTAB_DELETE
 ```
+
+ixhtab also provides a lightweight `ixhtab_iter` (bin index, element index, and cached pointer) with the same `iter_begin`/`iter_valid`/`iter_next` interface.
 
 ### C
 
@@ -164,7 +178,8 @@ ihtab_perform_entry(&t, &query, IHTAB_DELETE, &res);
 // Query
 printf("count=%lu size=%lu\n", ihtab_els_count_entry(&t), ihtab_size_entry(&t));
 
-// Iterate
+// Iterate -- ihtab_iter_entry is a lightweight iterator
+// (just an element index and a cached pointer)
 struct ihtab_iter_entry it = ihtab_iter_begin_entry(&t);
 while (ihtab_iter_valid_entry(&it)) {
   printf("%u -> %u\n", it.ptr->key, it.ptr->value);
@@ -174,7 +189,7 @@ while (ihtab_iter_valid_entry(&it)) {
 ihtab_destroy_entry(&t);
 ```
 
-For ixhtab, replace `ihtab` / `IHTAB_*` / `DEFINE_IHTAB` with `ixhtab` / `IXHTAB_*` / `DEFINE_IXHTAB`.  Note: ixhtab provides `ixhtab_els_count` but has no `size` equivalent.
+For ixhtab, replace `ihtab` / `IHTAB_*` / `DEFINE_IHTAB` with `ixhtab` / `IXHTAB_*` / `DEFINE_IXHTAB`.  Note: ixhtab provides `ixhtab_els_count` but has no `size` equivalent.  The `ixhtab_iter` iterator carries a bin index in addition to the element index and pointer, but is still lightweight.
 
 ## Benchmarking
 
