@@ -7,7 +7,7 @@
 #include <cassert>
 #include <iterator>
 
-#define FORCE_INLINE __attribute__((always_inline)) inline
+#define FORCE_INLINE __attribute__ ((always_inline)) inline
 
 typedef uint16_t ixhtab_ind_t;
 typedef size_t ixhtab_hash_t;
@@ -34,8 +34,7 @@ static FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
   return _mm_cvtsi64_si128 (*(const long long *) p);
 }
 
-static FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g,
-                                                unsigned char h7_val) {
+static FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
   __m128i h7_vec = _mm_set1_epi8 ((char) h7_val);
   return (unsigned int) _mm_movemask_epi8 (_mm_cmpeq_epi8 (g, h7_vec)) & 0xff;
 }
@@ -54,8 +53,7 @@ static FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
   return *(const uint64_t *) p;
 }
 
-static FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g,
-                                                unsigned char h7_val) {
+static FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
   uint8x8_t group = vcreate_u8 (g);
   uint8x8_t match_eq = vceq_u8 (group, vdup_n_u8 (h7_val));
   static const uint8x8_t bit_mask = {1, 2, 4, 8, 16, 32, 64, 128};
@@ -77,19 +75,16 @@ static FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
   return *(const uint64_t *) p;
 }
 
-static FORCE_INLINE uint64_t ixhtab_match_mask (ixhtab_group_t g,
-                                            unsigned char h7_val) {
+static FORCE_INLINE uint64_t ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
   uint64_t cmp = g ^ (IXHTAB_SWAR_LSB * h7_val);
   return (cmp - IXHTAB_SWAR_LSB) & ~cmp & IXHTAB_SWAR_MSB;
 }
 
-static FORCE_INLINE uint64_t ixhtab_match_empty (ixhtab_group_t g) {
-  return g & IXHTAB_SWAR_MSB;
-}
+static FORCE_INLINE uint64_t ixhtab_match_empty (ixhtab_group_t g) { return g & IXHTAB_SWAR_MSB; }
 
 #endif
 
-template<typename El>
+template <typename El>
 struct ebin_ixhtab_t {
   ixhtab_depth_t depth;
   ixhtab_hash_t mask;
@@ -101,7 +96,7 @@ struct ebin_ixhtab_t {
   unsigned int groups_mask;
 };
 
-template<typename El, typename Hash, typename Eq>
+template <typename El, typename Hash, typename Eq>
 class ixhtab {
   unsigned int els_num;
   ixhtab_depth_t max_depth;
@@ -112,12 +107,11 @@ class ixhtab {
   unsigned int bins_num;
   unsigned int bins_capacity;
 
-  ebin_ixhtab_ind_t create_bin ( unsigned int size) {
+  ebin_ixhtab_ind_t create_bin (unsigned int size) {
     if (size < IXHTAB_GROUP_SIZE) size = IXHTAB_GROUP_SIZE;
     if (bins_num == bins_capacity) {
       bins_capacity = bins_capacity ? bins_capacity * 2 : 4;
-      bins = (ebin_ixhtab_t<El> *) std::realloc (bins,
-                                                      bins_capacity * sizeof (ebin_ixhtab_t<El>));
+      bins = (ebin_ixhtab_t<El> *) std::realloc (bins, bins_capacity * sizeof (ebin_ixhtab_t<El>));
     }
     ebin_ixhtab_ind_t ind = bins_num++;
     auto &b = bins[ind];
@@ -141,7 +135,9 @@ class ixhtab {
   }
 
   static void get_params (size_t size, size_t &bins_num, size_t &bin_power2, size_t &bin_size) {
-    bin_size = size; bins_num = 1; bin_power2 = 0;
+    bin_size = size;
+    bins_num = 1;
+    bin_power2 = 0;
     while (bin_size >= (1u << IXHTAB_MAX_BIN_SIZE_POWER)) {
       bins_num *= 2;
       bin_size /= 2;
@@ -149,7 +145,7 @@ class ixhtab {
     }
   }
 
-public:
+ public:
   ixhtab (unsigned int min_size = 8) {
     unsigned int size;
     for (size = 2; min_size > size; size *= 2);
@@ -165,22 +161,21 @@ public:
     dir_capacity = (unsigned int) bn;
     for (size_t i = 0; i < bn; i++) {
       dir[i] = (ebin_ixhtab_ind_t) i;
-      ebin_ixhtab_ind_t ind = create_bin ( (unsigned int) bin_size);
+      ebin_ixhtab_ind_t ind = create_bin ((unsigned int) bin_size);
       bins[ind].depth = (ixhtab_depth_t) bin_power2;
       bins[ind].mask = (ixhtab_hash_t) i;
     }
   }
 
   ~ixhtab () {
-    for (unsigned int i = 0; i < bins_num; i++)
-      destroy_bin (bins[i]);
+    for (unsigned int i = 0; i < bins_num; i++) destroy_bin (bins[i]);
     std::free (bins);
     std::free (dir);
   }
 
-private:
-  FORCE_INLINE bool do_1 (ebin_ixhtab_t<El> &bin, ixhtab_hash_t hash, El &el,
-				 enum ixhtab_action action, El **res) {
+ private:
+  FORCE_INLINE bool do_1 (ebin_ixhtab_t<El> &bin, ixhtab_hash_t hash, El &el, enum ixhtab_action action,
+                          El **res) {
     Eq eq_fn;
     unsigned char h7_val = (hash >> (sizeof (size_t) * 8 - 7)) & 0x7f;
     unsigned int group_ind = (unsigned int) (hash / IXHTAB_GROUP_SIZE) & bin.groups_mask;
@@ -196,8 +191,7 @@ private:
         unsigned int slot = group_ind * IXHTAB_GROUP_SIZE + bit;
         ixhtab_ind_t el_ind = bin.entries[slot];
         if (el_ind == IXHTAB_ENTRY_DELETED) {
-          if (first_deleted_slot == ~0u)
-            first_deleted_slot = slot;
+          if (first_deleted_slot == ~0u) first_deleted_slot = slot;
         } else if (eq_fn (bin.els[el_ind], el)) {
           if (action != IXHTAB_DELETE) {
             *res = &bin.els[el_ind];
@@ -235,9 +229,9 @@ private:
     }
   }
 
-  void split_bin ( ebin_ixhtab_ind_t bin_ind) {
+  void split_bin (ebin_ixhtab_ind_t bin_ind) {
     unsigned int size = (bins[bin_ind].groups_mask + 1) * IXHTAB_GROUP_SIZE / 2;
-    ebin_ixhtab_ind_t new_ind = create_bin ( size);
+    ebin_ixhtab_ind_t new_ind = create_bin (size);
     Hash hash_fn;
     for (;;) {
       auto &new_bin = bins[new_ind];
@@ -265,10 +259,12 @@ private:
         ixhtab_hash_t hash = hash_fn (bin.els[i]);
         if (hash == 0) hash = 1;
         bool is_old = (hash & split_mask) == 0;
-        if (is_old) old_added = true; else new_added = true;
+        if (is_old)
+          old_added = true;
+        else
+          new_added = true;
         El *r;
-        do_1 ( is_old ? bins[bin_ind] : bins[new_ind],
-              hash, bin.els[i], IXHTAB_INSERT, &r);
+        do_1 (is_old ? bins[bin_ind] : bins[new_ind], hash, bin.els[i], IXHTAB_INSERT, &r);
         *r = bin.els[i];
       }
       els_num = saved_els_num;
@@ -286,7 +282,7 @@ private:
     std::memset (nb.deleted, 0, ((nb.groups_mask + 1) * IXHTAB_GROUP_SIZE / 2 + 7) / 8);
   }
 
-public:
+ public:
   FORCE_INLINE bool perform (El &el, enum ixhtab_action action, El **res) {
     Hash hash_fn;
     ixhtab_hash_t hash = hash_fn (el);
@@ -304,7 +300,7 @@ public:
         grow = true;
       }
       if (grow && els_size >= (1u << IXHTAB_MAX_BIN_SIZE_POWER)) {
-        split_bin ( bin_ind);
+        split_bin (bin_ind);
         bin_ind = dir[hash & bin_mask];
       } else {
         auto &b = bins[bin_ind];
@@ -314,8 +310,7 @@ public:
         b.els = (El *) std::realloc (b.els, els_size * sizeof (El));
         b.h7 = (unsigned char *) std::realloc (b.h7, entries_size);
         std::memset (b.h7, IXHTAB_EMPTY_H7, entries_size);
-        b.entries = (ixhtab_ind_t *) std::realloc (b.entries,
-                                                      entries_size * sizeof (ixhtab_ind_t));
+        b.entries = (ixhtab_ind_t *) std::realloc (b.entries, entries_size * sizeof (ixhtab_ind_t));
         b.groups_mask = entries_size / IXHTAB_GROUP_SIZE - 1;
         unsigned int start = b.els_start, bound = b.els_bound;
         b.els_start = b.els_bound = 0;
@@ -326,26 +321,64 @@ public:
           ixhtab_hash_t hash2 = hash_fn (b.els[i]);
           if (hash2 == 0) hash2 = 1;
           El *r;
-          do_1 ( b, hash2, b.els[i], IXHTAB_INSERT, &r);
+          do_1 (b, hash2, b.els[i], IXHTAB_INSERT, &r);
           *r = b.els[i];
         }
         els_num = saved_els_num;
         std::free (old_deleted);
       }
     }
-    return do_1 ( bins[bin_ind], hash, el, action, res);
+    return do_1 (bins[bin_ind], hash, el, action, res);
   }
 
   unsigned int els_count () const { return els_num; }
 
+  struct ixhtab_iter {
+    unsigned int bin_idx;
+    unsigned int el_idx;
+    El *ptr;
+  };
+
+  FORCE_INLINE void iter_advance (ixhtab_iter &it) {
+    while (it.bin_idx < bins_num) {
+      auto &b = bins[it.bin_idx];
+      while (it.el_idx < b.els_bound) {
+        if (!(b.deleted[it.el_idx / 8] & (1 << (it.el_idx % 8)))) {
+          it.ptr = &b.els[it.el_idx];
+          return;
+        }
+        ++it.el_idx;
+      }
+      ++it.bin_idx;
+      if (it.bin_idx < bins_num) it.el_idx = bins[it.bin_idx].els_start;
+    }
+    it.ptr = nullptr;
+  }
+
+  FORCE_INLINE ixhtab_iter iter_begin () {
+    ixhtab_iter it;
+    it.bin_idx = 0;
+    it.el_idx = bins_num > 0 ? bins[0].els_start : 0;
+    it.ptr = nullptr;
+    iter_advance (it);
+    return it;
+  }
+
+  static FORCE_INLINE bool iter_valid (ixhtab_iter &it) { return it.ptr != nullptr; }
+
+  FORCE_INLINE void iter_next (ixhtab_iter &it) {
+    ++it.el_idx;
+    iter_advance (it);
+  }
+
   struct iterator {
     using iterator_category = std::forward_iterator_tag;
-    using value_type        = El;
-    using difference_type   = std::ptrdiff_t;
-    using pointer           = El *;
-    using reference         = El &;
+    using value_type = El;
+    using difference_type = std::ptrdiff_t;
+    using pointer = El *;
+    using reference = El &;
 
-    ixhtab      *tab;
+    ixhtab *tab;
     unsigned int bin_idx;
     unsigned int el_idx;
 
@@ -353,8 +386,7 @@ public:
       while (bin_idx < tab->bins_num) {
         auto &b = tab->bins[bin_idx];
         while (el_idx < b.els_bound) {
-          if (!(b.deleted[el_idx / 8] & (1 << (el_idx % 8))))
-            return;
+          if (!(b.deleted[el_idx / 8] & (1 << (el_idx % 8)))) return;
           ++el_idx;
         }
         ++bin_idx;
@@ -362,12 +394,22 @@ public:
       }
     }
 
-    FORCE_INLINE El &operator* () const { return  tab->bins[bin_idx].els[el_idx]; }
+    FORCE_INLINE El &operator* () const { return tab->bins[bin_idx].els[el_idx]; }
     FORCE_INLINE El *operator->() const { return &tab->bins[bin_idx].els[el_idx]; }
-    FORCE_INLINE iterator &operator++() { ++el_idx; advance (); return *this; }
-    FORCE_INLINE iterator  operator++(int) { iterator t = *this; ++(*this); return t; }
-    FORCE_INLINE bool operator==(const iterator &o) const { return bin_idx == o.bin_idx && el_idx == o.el_idx; }
-    FORCE_INLINE bool operator!=(const iterator &o) const { return !(*this == o); }
+    FORCE_INLINE iterator &operator++ () {
+      ++el_idx;
+      advance ();
+      return *this;
+    }
+    FORCE_INLINE iterator operator++ (int) {
+      iterator t = *this;
+      ++(*this);
+      return t;
+    }
+    FORCE_INLINE bool operator== (const iterator &o) const {
+      return bin_idx == o.bin_idx && el_idx == o.el_idx;
+    }
+    FORCE_INLINE bool operator!= (const iterator &o) const { return !(*this == o); }
   };
 
   FORCE_INLINE iterator begin () {
