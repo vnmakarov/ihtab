@@ -260,9 +260,8 @@ static void bench_core(int n, const char *sz) {
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("C++ ixhtab", "IntIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = xm_i.iter_begin();
-    while (ixhtab_int_t::iter_valid(it)) { s += it.ptr->value; xm_i.iter_next(it); }
+  record("ixhtab", "IntIteration", sz, n, bench_ns_op([&]{
+    int s = 0; for (auto &e : xm_i) s += e.value;
     do_not_optimize = s;
   }, n));
 
@@ -289,9 +288,8 @@ static void bench_core(int n, const char *sz) {
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("C++ ihtab", "IntIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = im_i.iter_begin();
-    while (ihtab_int_t::iter_valid(it)) { s += it.ptr->value; im_i.iter_next(it); }
+  record("ihtab", "IntIteration", sz, n, bench_ns_op([&]{
+    int s = 0; for (auto &e : im_i) s += e.value;
     do_not_optimize = s;
   }, n));
 
@@ -389,9 +387,8 @@ static void bench_core(int n, const char *sz) {
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("C++ ixhtab", "StrIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = xm_s.iter_begin();
-    while (ixhtab_str_t::iter_valid(it)) { s += it.ptr->value; xm_s.iter_next(it); }
+  record("ixhtab", "StrIteration", sz, n, bench_ns_op([&]{
+    int s = 0; for (auto &e : xm_s) s += e.value;
     do_not_optimize = s;
   }, n));
 
@@ -418,9 +415,8 @@ static void bench_core(int n, const char *sz) {
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("C++ ihtab", "StrIteration", sz, n, bench_ns_op([&]{
-    int s = 0; auto it = im_s.iter_begin();
-    while (ihtab_str_t::iter_valid(it)) { s += it.ptr->value; im_s.iter_next(it); }
+  record("ihtab", "StrIteration", sz, n, bench_ns_op([&]{
+    int s = 0; for (auto &e : im_s) s += e.value;
     do_not_optimize = s;
   }, n));
 

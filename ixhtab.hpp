@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cassert>
+#include <iterator>
 
 #define FORCE_INLINE __attribute__((always_inline)) inline
 
@@ -338,45 +339,44 @@ public:
   unsigned int els_count () const { return els_num; }
 
   struct iterator {
+    using iterator_category = std::forward_iterator_tag;
+    using value_type        = El;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = El *;
+    using reference         = El &;
+
+    ixhtab      *tab;
     unsigned int bin_idx;
     unsigned int el_idx;
-    El *ptr;
+
+    FORCE_INLINE void advance () {
+      while (bin_idx < tab->bins_num) {
+        auto &b = tab->bins[bin_idx];
+        while (el_idx < b.els_bound) {
+          if (!(b.deleted[el_idx / 8] & (1 << (el_idx % 8))))
+            return;
+          ++el_idx;
+        }
+        ++bin_idx;
+        el_idx = bin_idx < tab->bins_num ? tab->bins[bin_idx].els_start : 0;
+      }
+    }
+
+    FORCE_INLINE El &operator* () const { return  tab->bins[bin_idx].els[el_idx]; }
+    FORCE_INLINE El *operator->() const { return &tab->bins[bin_idx].els[el_idx]; }
+    FORCE_INLINE iterator &operator++() { ++el_idx; advance (); return *this; }
+    FORCE_INLINE iterator  operator++(int) { iterator t = *this; ++(*this); return t; }
+    FORCE_INLINE bool operator==(const iterator &o) const { return bin_idx == o.bin_idx && el_idx == o.el_idx; }
+    FORCE_INLINE bool operator!=(const iterator &o) const { return !(*this == o); }
   };
 
-  FORCE_INLINE void iter_advance (iterator &it) {
-    while (it.bin_idx < bins_num) {
-      auto &b = bins[it.bin_idx];
-      while (it.el_idx < b.els_bound) {
-        if (!(b.deleted[it.el_idx / 8] & (1 << (it.el_idx % 8)))) {
-          it.ptr = &b.els[it.el_idx];
-          return;
-        }
-        ++it.el_idx;
-      }
-      ++it.bin_idx;
-      if (it.bin_idx < bins_num)
-        it.el_idx = bins[it.bin_idx].els_start;
-    }
-    it.ptr = nullptr;
-  }
-
-  FORCE_INLINE iterator iter_begin () {
-    iterator it;
-    it.bin_idx = 0;
-    it.el_idx = bins_num > 0 ? bins[0].els_start : 0;
-    it.ptr = nullptr;
-    iter_advance (it);
+  FORCE_INLINE iterator begin () {
+    iterator it{this, 0, bins_num > 0 ? bins[0].els_start : 0};
+    it.advance ();
     return it;
   }
 
-  static FORCE_INLINE bool iter_valid (iterator &it) {
-    return it.ptr != nullptr;
-  }
-
-  FORCE_INLINE void iter_next (iterator &it) {
-    ++it.el_idx;
-    iter_advance (it);
-  }
+  FORCE_INLINE iterator end () { return {this, bins_num, 0}; }
 };
 
 #endif /* #ifndef IXHTAB_H */

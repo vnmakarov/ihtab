@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cassert>
+#include <iterator>
 
 #define FORCE_INLINE __attribute__((always_inline)) inline
 
@@ -225,37 +226,40 @@ public:
   }
 
   struct iterator {
-    ihtab_size_t el_idx;
-    El *ptr;
+    using iterator_category = std::forward_iterator_tag;
+    using value_type        = El;
+    using difference_type   = std::ptrdiff_t;
+    using pointer           = El *;
+    using reference         = El &;
+
+    char         *deleted;
+    El           *els;
+    ihtab_size_t  el_idx;
+    ihtab_size_t  els_bound;
+
+    FORCE_INLINE void advance () {
+      while (el_idx < els_bound) {
+        if (!(deleted[el_idx / 8] & (1 << (el_idx % 8))))
+          return;
+        ++el_idx;
+      }
+    }
+
+    FORCE_INLINE El &operator* () const { return  els[el_idx]; }
+    FORCE_INLINE El *operator->() const { return &els[el_idx]; }
+    FORCE_INLINE iterator &operator++() { ++el_idx; advance (); return *this; }
+    FORCE_INLINE iterator  operator++(int) { iterator t = *this; ++(*this); return t; }
+    FORCE_INLINE bool operator==(const iterator &o) const { return el_idx == o.el_idx; }
+    FORCE_INLINE bool operator!=(const iterator &o) const { return el_idx != o.el_idx; }
   };
 
-  FORCE_INLINE void iter_advance (iterator &it) {
-    while (it.el_idx < bin.els_bound) {
-      if (!(bin.deleted[it.el_idx / 8] & (1 << (it.el_idx % 8)))) {
-        it.ptr = &bin.els[it.el_idx];
-        return;
-      }
-      ++it.el_idx;
-    }
-    it.ptr = nullptr;
-  }
-
-  FORCE_INLINE iterator iter_begin () {
-    iterator it;
-    it.el_idx = 0;
-    it.ptr = nullptr;
-    iter_advance (it);
+  FORCE_INLINE iterator begin () {
+    iterator it{bin.deleted, bin.els, 0, bin.els_bound};
+    it.advance ();
     return it;
   }
 
-  static FORCE_INLINE bool iter_valid (iterator &it) {
-    return it.ptr != nullptr;
-  }
-
-  FORCE_INLINE void iter_next (iterator &it) {
-    ++it.el_idx;
-    iter_advance (it);
-  }
+  FORCE_INLINE iterator end () { return {bin.deleted, bin.els, bin.els_bound, bin.els_bound}; }
 };
 
 #endif /* #ifndef IHTAB_H */

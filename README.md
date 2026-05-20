@@ -66,8 +66,8 @@ if (t.perform(key, IHTAB_FIND, &slot))
 t.perform(key, IHTAB_DELETE, &slot);
 
 // Iterate
-for (auto it = t.iter_begin(); Tab::iter_valid(it); t.iter_next(it))
-    printf("%llu -> %d\n", it.ptr->key, it.ptr->value);
+for (auto &e : t)
+    printf("%llu -> %d\n", e.key, e.value);
 
 // t destroyed automatically at end of scope
 ```
