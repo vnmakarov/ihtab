@@ -31,6 +31,7 @@ extern "C" {
 
 #include "ihtab.hpp"
 #include "ixhtab.hpp"
+#include "bench_c.h"
 
 static volatile size_t do_not_optimize;
 static bool include_string = false;
@@ -169,7 +170,7 @@ static std::vector<result> results;
 
 static void record(const char *impl, const char *bench, const char *sz, int n, double ns) {
   results.push_back({impl, bench, sz, n, ns});
-  printf("  %-6s %-22s %-6s %10.1f ns/op\n", impl, bench, sz, ns);
+  printf("  %-11s %-22s %-6s %10.1f ns/op\n", impl, bench, sz, ns);
 }
 
 // ===== ihtab / ixhtab entry types =====
@@ -237,7 +238,7 @@ static void bench_core(int n, const char *sz) {
   }, n));
 
   // --- ixhtab int ---
-  record("ixhtab", "IntInsert", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "IntInsert", sz, n, bench_ns_op([&]{
     ixhtab_int_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -246,27 +247,27 @@ static void bench_core(int n, const char *sz) {
   ixhtab_int_t xm_i(8);
   for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!xm_i.perform(e, IXHTAB_INSERT, &r)) *r = e; }
 
-  record("ixhtab", "IntLookup", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "IntLookup", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], 0}; ixhtab_int_entry *r; if (xm_i.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
-  record("ixhtab", "IntDelete", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "IntDelete", sz, n, bench_ns_op([&]{
     ixhtab_int_t mc(8);
     for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], i}; ixhtab_int_entry *r; if (!mc.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     for (int i = 0; i < n; i++) { ixhtab_int_entry e{ikeys[i], 0}; ixhtab_int_entry *r; mc.perform(e, IXHTAB_DELETE, &r); }
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("ixhtab", "IntIteration", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "IntIteration", sz, n, bench_ns_op([&]{
     int s = 0; auto it = xm_i.iter_begin();
     while (ixhtab_int_t::iter_valid(it)) { s += it.ptr->value; xm_i.iter_next(it); }
     do_not_optimize = s;
   }, n));
 
   // --- ihtab int ---
-  record("ihtab", "IntInsert", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "IntInsert", sz, n, bench_ns_op([&]{
     ihtab_int_t m(8);
     for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -275,24 +276,66 @@ static void bench_core(int n, const char *sz) {
   ihtab_int_t im_i(8);
   for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!im_i.perform(e, IHTAB_INSERT, &r)) *r = e; }
 
-  record("ihtab", "IntLookup", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "IntLookup", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], 0}; ihtab_int_entry *r; if (im_i.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
-  record("ihtab", "IntDelete", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "IntDelete", sz, n, bench_ns_op([&]{
     ihtab_int_t mc(8);
     for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], i}; ihtab_int_entry *r; if (!mc.perform(e, IHTAB_INSERT, &r)) *r = e; }
     for (int i = 0; i < n; i++) { ihtab_int_entry e{ikeys[i], 0}; ihtab_int_entry *r; mc.perform(e, IHTAB_DELETE, &r); }
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("ihtab", "IntIteration", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "IntIteration", sz, n, bench_ns_op([&]{
     int s = 0; auto it = im_i.iter_begin();
     while (ihtab_int_t::iter_valid(it)) { s += it.ptr->value; im_i.iter_next(it); }
     do_not_optimize = s;
   }, n));
+
+  // --- C ixhtab int ---
+  record("C ixhtab", "IntInsert", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_int_insert(ikeys.data(), n);
+  }, n));
+
+  void *cxi_i = c_ixhtab_int_build(ikeys.data(), n);
+
+  record("C ixhtab", "IntLookup", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_int_lookup(cxi_i, ikeys.data(), n);
+  }, n));
+
+  record("C ixhtab", "IntDelete", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_int_delete(ikeys.data(), n);
+  }, n));
+
+  record("C ixhtab", "IntIteration", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_int_iterate(cxi_i);
+  }, n));
+
+  c_ixhtab_int_free(cxi_i);
+
+  // --- C ihtab int ---
+  record("C ihtab", "IntInsert", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_int_insert(ikeys.data(), n);
+  }, n));
+
+  void *ci_i = c_ihtab_int_build(ikeys.data(), n);
+
+  record("C ihtab", "IntLookup", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_int_lookup(ci_i, ikeys.data(), n);
+  }, n));
+
+  record("C ihtab", "IntDelete", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_int_delete(ikeys.data(), n);
+  }, n));
+
+  record("C ihtab", "IntIteration", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_int_iterate(ci_i);
+  }, n));
+
+  c_ihtab_int_free(ci_i);
 
   if (!include_string) return;
   auto skeys = gen_str_keys(n);
@@ -324,7 +367,7 @@ static void bench_core(int n, const char *sz) {
   }, n));
 
   // --- ixhtab str ---
-  record("ixhtab", "StrInsert", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "StrInsert", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -333,27 +376,27 @@ static void bench_core(int n, const char *sz) {
   ixhtab_str_t xm_s(8);
   for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!xm_s.perform(e, IXHTAB_INSERT, &r)) *r = e; }
 
-  record("ixhtab", "StrLookup", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "StrLookup", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], 0}; ixhtab_str_entry *r; if (xm_s.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
-  record("ixhtab", "StrDelete", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "StrDelete", sz, n, bench_ns_op([&]{
     ixhtab_str_t mc(8);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], i}; ixhtab_str_entry *r; if (!mc.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{skeys[i], 0}; ixhtab_str_entry *r; mc.perform(e, IXHTAB_DELETE, &r); }
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("ixhtab", "StrIteration", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "StrIteration", sz, n, bench_ns_op([&]{
     int s = 0; auto it = xm_s.iter_begin();
     while (ixhtab_str_t::iter_valid(it)) { s += it.ptr->value; xm_s.iter_next(it); }
     do_not_optimize = s;
   }, n));
 
   // --- ihtab str ---
-  record("ihtab", "StrInsert", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "StrInsert", sz, n, bench_ns_op([&]{
     ihtab_str_t m(8);
     for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -362,24 +405,56 @@ static void bench_core(int n, const char *sz) {
   ihtab_str_t im_s(8);
   for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!im_s.perform(e, IHTAB_INSERT, &r)) *r = e; }
 
-  record("ihtab", "StrLookup", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "StrLookup", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], 0}; ihtab_str_entry *r; if (im_s.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
-  record("ihtab", "StrDelete", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "StrDelete", sz, n, bench_ns_op([&]{
     ihtab_str_t mc(8);
     for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], i}; ihtab_str_entry *r; if (!mc.perform(e, IHTAB_INSERT, &r)) *r = e; }
     for (int i = 0; i < n; i++) { ihtab_str_entry e{skeys[i], 0}; ihtab_str_entry *r; mc.perform(e, IHTAB_DELETE, &r); }
     do_not_optimize = mc.els_count();
   }, n));
 
-  record("ihtab", "StrIteration", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "StrIteration", sz, n, bench_ns_op([&]{
     int s = 0; auto it = im_s.iter_begin();
     while (ihtab_str_t::iter_valid(it)) { s += it.ptr->value; im_s.iter_next(it); }
     do_not_optimize = s;
   }, n));
+
+  // --- C ixhtab str ---
+  record("C ixhtab", "StrInsert", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_insert(skeys.data(), n);
+  }, n));
+  void *cxs = c_ixhtab_str_build(skeys.data(), n);
+  record("C ixhtab", "StrLookup", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_lookup(cxs, skeys.data(), n);
+  }, n));
+  record("C ixhtab", "StrDelete", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_delete(skeys.data(), n);
+  }, n));
+  record("C ixhtab", "StrIteration", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_iterate(cxs);
+  }, n));
+  c_ixhtab_str_free(cxs);
+
+  // --- C ihtab str ---
+  record("C ihtab", "StrInsert", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_insert(skeys.data(), n);
+  }, n));
+  void *cis = c_ihtab_str_build(skeys.data(), n);
+  record("C ihtab", "StrLookup", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_lookup(cis, skeys.data(), n);
+  }, n));
+  record("C ihtab", "StrDelete", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_delete(skeys.data(), n);
+  }, n));
+  record("C ihtab", "StrIteration", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_iterate(cis);
+  }, n));
+  c_ihtab_str_free(cis);
 }
 
 // ===== MixedOps: 70% insert, 20% lookup, 10% delete on str keys =====
@@ -399,7 +474,7 @@ static void bench_mixed(int n, const char *sz) {
     do_not_optimize = m.size();
   }, n));
 
-  record("ixhtab", "MixedOps", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "MixedOps", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
     for (int j = 0; j < n; j++) {
       int op = j % 10;
@@ -411,7 +486,7 @@ static void bench_mixed(int n, const char *sz) {
     do_not_optimize = m.els_count();
   }, n));
 
-  record("ihtab", "MixedOps", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "MixedOps", sz, n, bench_ns_op([&]{
     ihtab_str_t m(8);
     for (int j = 0; j < n; j++) {
       int op = j % 10;
@@ -421,6 +496,13 @@ static void bench_mixed(int n, const char *sz) {
       else m.perform(e, IHTAB_DELETE, &r);
     }
     do_not_optimize = m.els_count();
+  }, n));
+
+  record("C ixhtab", "MixedOps", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_mixed(keys.data(), n);
+  }, n));
+  record("C ihtab", "MixedOps", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_mixed(keys.data(), n);
   }, n));
 }
 
@@ -439,7 +521,7 @@ static void bench_random_access(int n, const char *sz) {
 
   ixhtab_str_t xm(8);
   for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
-  record("ixhtab", "RandomAccess", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "RandomAccess", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
@@ -447,11 +529,23 @@ static void bench_random_access(int n, const char *sz) {
 
   ihtab_str_t im(8);
   for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
-  record("ihtab", "RandomAccess", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "RandomAccess", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
+
+  void *cxra = c_ixhtab_str_build(keys.data(), n);
+  record("C ixhtab", "RandomAccess", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_lookup(cxra, keys.data(), n);
+  }, n));
+  c_ixhtab_str_free(cxra);
+
+  void *cira = c_ihtab_str_build(keys.data(), n);
+  record("C ihtab", "RandomAccess", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_lookup(cira, keys.data(), n);
+  }, n));
+  c_ihtab_str_free(cira);
 }
 
 // ===== CacheMiss: lookup keys guaranteed absent (int keys, bit flip) =====
@@ -471,7 +565,7 @@ static void bench_cache_miss(int n, const char *sz) {
 
   ixhtab_int_t xm(8);
   for (int i = 0; i < n; i++) { ixhtab_int_entry e{keys[i], i}; ixhtab_int_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
-  record("ixhtab", "CacheMiss", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "CacheMiss", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ixhtab_int_entry e{missing[i], 0}; ixhtab_int_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
@@ -479,11 +573,23 @@ static void bench_cache_miss(int n, const char *sz) {
 
   ihtab_int_t im(8);
   for (int i = 0; i < n; i++) { ihtab_int_entry e{keys[i], i}; ihtab_int_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
-  record("ihtab", "CacheMiss", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "CacheMiss", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ihtab_int_entry e{missing[i], 0}; ihtab_int_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
+
+  void *cxcm = c_ixhtab_int_build(keys.data(), n);
+  record("C ixhtab", "CacheMiss", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_int_lookup(cxcm, missing.data(), n);
+  }, n));
+  c_ixhtab_int_free(cxcm);
+
+  void *cicm = c_ihtab_int_build(keys.data(), n);
+  record("C ihtab", "CacheMiss", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_int_lookup(cicm, missing.data(), n);
+  }, n));
+  c_ihtab_int_free(cicm);
 }
 
 // ===== HashCollisions: collision-prone str keys (insert + lookup) =====
@@ -499,7 +605,7 @@ static void bench_collisions(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
-  record("ixhtab", "HashCollision", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "HashCollision", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     int s = 0;
@@ -507,12 +613,19 @@ static void bench_collisions(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
-  record("ihtab", "HashCollision", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "HashCollision", sz, n, bench_ns_op([&]{
     ihtab_str_t m(8);
     for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     int s = 0;
     for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (m.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
+  }, n));
+
+  record("C ixhtab", "HashCollision", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_collision(keys.data(), n);
+  }, n));
+  record("C ihtab", "HashCollision", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_collision(keys.data(), n);
   }, n));
 }
 
@@ -535,7 +648,7 @@ static void bench_large_key(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
-  record("ixhtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -543,13 +656,13 @@ static void bench_large_key(int n, const char *sz) {
 
   ixhtab_str_t xm(8);
   for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
-  record("ixhtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], 0}; ixhtab_str_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
 
-  record("ihtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
     ihtab_str_t m(8);
     for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -557,11 +670,29 @@ static void bench_large_key(int n, const char *sz) {
 
   ihtab_str_t im(8);
   for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
-  record("ihtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], 0}; ihtab_str_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value; }
     do_not_optimize = s;
   }, n));
+
+  record("C ixhtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_insert(keys.data(), n);
+  }, n));
+  void *cxlk = c_ixhtab_str_build(keys.data(), n);
+  record("C ixhtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_lookup(cxlk, keys.data(), n);
+  }, n));
+  c_ixhtab_str_free(cxlk);
+
+  record("C ihtab", "LargeKeyIns", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_insert(keys.data(), n);
+  }, n));
+  void *cilk = c_ihtab_str_build(keys.data(), n);
+  record("C ihtab", "LargeKeyGet", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_lookup(cilk, keys.data(), n);
+  }, n));
+  c_ihtab_str_free(cilk);
 }
 
 // ===== LargeValue: insert + lookup with ~96-byte value struct =====
@@ -582,7 +713,7 @@ static void bench_large_value(int n, const char *sz) {
     do_not_optimize = s;
   }, n));
 
-  record("ixhtab", "LargeValIns", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "LargeValIns", sz, n, bench_ns_op([&]{
     ixhtab_lv_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], make_large_value(i)}; ixhtab_lv_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -590,13 +721,13 @@ static void bench_large_value(int n, const char *sz) {
 
   ixhtab_lv_t xm(8);
   for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], make_large_value(i)}; ixhtab_lv_entry *r; if (!xm.perform(e, IXHTAB_INSERT, &r)) *r = e; }
-  record("ixhtab", "LargeValGet", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "LargeValGet", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ixhtab_lv_entry e{keys[i], {}}; ixhtab_lv_entry *r; if (xm.perform(e, IXHTAB_FIND, &r)) s += r->value.value; }
     do_not_optimize = s;
   }, n));
 
-  record("ihtab", "LargeValIns", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "LargeValIns", sz, n, bench_ns_op([&]{
     ihtab_lv_t m(8);
     for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], make_large_value(i)}; ihtab_lv_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -604,11 +735,29 @@ static void bench_large_value(int n, const char *sz) {
 
   ihtab_lv_t im(8);
   for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], make_large_value(i)}; ihtab_lv_entry *r; if (!im.perform(e, IHTAB_INSERT, &r)) *r = e; }
-  record("ihtab", "LargeValGet", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "LargeValGet", sz, n, bench_ns_op([&]{
     int s = 0;
     for (int i = 0; i < n; i++) { ihtab_lv_entry e{keys[i], {}}; ihtab_lv_entry *r; if (im.perform(e, IHTAB_FIND, &r)) s += r->value.value; }
     do_not_optimize = s;
   }, n));
+
+  record("C ixhtab", "LargeValIns", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_lv_insert(keys.data(), n);
+  }, n));
+  void *cxlv = c_ixhtab_lv_build(keys.data(), n);
+  record("C ixhtab", "LargeValGet", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_lv_lookup(cxlv, keys.data(), n);
+  }, n));
+  c_ixhtab_lv_free(cxlv);
+
+  record("C ihtab", "LargeValIns", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_lv_insert(keys.data(), n);
+  }, n));
+  void *cilv = c_ihtab_lv_build(keys.data(), n);
+  record("C ihtab", "LargeValGet", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_lv_lookup(cilv, keys.data(), n);
+  }, n));
+  c_ihtab_lv_free(cilv);
 }
 
 // ===== Growth: insert without pre-allocation =====
@@ -623,13 +772,13 @@ static void bench_growth(int n, const char *sz) {
     do_not_optimize = m.size();
   }, n));
 
-  record("ixhtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(8);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
   }, n));
 
-  record("ihtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
     ihtab_str_t m(8);
     for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
@@ -642,33 +791,47 @@ static void bench_growth(int n, const char *sz) {
     do_not_optimize = m.size();
   }, n));
 
-  record("ixhtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
+  record("C++ ixhtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
     ixhtab_str_t m(n);
     for (int i = 0; i < n; i++) { ixhtab_str_entry e{keys[i], i}; ixhtab_str_entry *r; if (!m.perform(e, IXHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
   }, n));
 
-  record("ihtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
+  record("C++ ihtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
     ihtab_str_t m(n);
     for (int i = 0; i < n; i++) { ihtab_str_entry e{keys[i], i}; ihtab_str_entry *r; if (!m.perform(e, IHTAB_INSERT, &r)) *r = e; }
     do_not_optimize = m.els_count();
   }, n));
+
+  record("C ixhtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_growth(keys.data(), n, 0);
+  }, n));
+  record("C ihtab", "GrowthNoPre", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_growth(keys.data(), n, 0);
+  }, n));
+  record("C ixhtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ixhtab_str_growth(keys.data(), n, 1);
+  }, n));
+  record("C ihtab", "GrowthPrealloc", sz, n, bench_ns_op([&]{
+    do_not_optimize = c_ihtab_str_growth(keys.data(), n, 1);
+  }, n));
 }
 
 static void print_geomean() {
-  const char *impls[] = {"absl", "ixhtab", "ihtab"};
+  const char *impls[] = {"absl", "umap", "C++ ixhtab", "C++ ihtab", "C ixhtab", "C ihtab"};
   printf("Geometric mean (ns/op):\n");
   double absl_gm = 0;
   for (auto impl : impls) {
     double sum_log = 0; int cnt = 0;
     for (auto &r : results)
       if (strcmp(r.impl, impl) == 0) { sum_log += log(r.ns_op); cnt++; }
-    double gm = cnt > 0 ? exp(sum_log / cnt) : 0;
+    if (cnt == 0) continue;
+    double gm = exp(sum_log / cnt);
     if (strcmp(impl, "absl") == 0) absl_gm = gm;
     if (absl_gm > 0 && strcmp(impl, "absl") != 0)
-      printf("  %-6s %6.1f ns/op  (%.3fx vs absl)\n", impl, gm, gm / absl_gm);
+      printf("  %-11s %6.1f ns/op  (%.3fx vs absl)\n", impl, gm, gm / absl_gm);
     else
-      printf("  %-6s %6.1f ns/op\n", impl, gm);
+      printf("  %-11s %6.1f ns/op\n", impl, gm);
   }
 }
 
@@ -692,8 +855,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  printf("Hash Table Comparison: absl vs ixhtab vs ihtab\n");
-  printf("================================================\n");
+  printf("Hash Table Comparison: absl vs umap vs C++/C ihtab/ixhtab\n");
+  printf("==========================================================\n");
   printf("Hash: vmum  Sizes:%s Small=100 Medium=10000 Large=1000000\n\n",
          include_tiny ? " Tiny=10" : "");
 
