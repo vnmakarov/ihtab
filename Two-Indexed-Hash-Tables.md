@@ -60,7 +60,9 @@ Empty detection is even cheaper: since empty slots have bit 7 set (0x80) and val
 
 ## Usage
 
-Both are header-only C++ templates:
+Both are header-only.  C++ versions use templates (`ihtab.hpp`, `ixhtab.hpp`); C versions use a macro to stamp out typed definitions (`ihtab.h`, `ixhtab.h`).
+
+### C++
 
 ```cpp
 #include "ihtab.hpp"
@@ -89,6 +91,11 @@ Entry *res;
 if (!t.perform(e, IHTAB_INSERT, &res))
   *res = e;  // write element on new insert
 
+// Replace (insert or update)
+Entry e2{42, 200};
+t.perform(e2, IHTAB_REPLACE, &res);
+*res = e2;  // always write -- inserts if new, overwrites if exists
+
 // Find
 Entry query{42, 0};
 if (t.perform(query, IHTAB_FIND, &res))
@@ -96,6 +103,9 @@ if (t.perform(query, IHTAB_FIND, &res))
 
 // Delete
 t.perform(query, IHTAB_DELETE, &res);
+
+// Query
+printf("count=%lu size=%lu\n", t.els_count(), t.size());
 
 // Iterate
 for (auto &e : t)
@@ -108,8 +118,63 @@ ixhtab has the same interface -- just swap the prefix:
 
 ```cpp
 using Table = ixhtab<Entry, MyHash, MyEq>;
-// IXHTAB_INSERT, IXHTAB_FIND, IXHTAB_DELETE
+// IXHTAB_INSERT, IXHTAB_REPLACE, IXHTAB_FIND, IXHTAB_DELETE
 ```
+
+### C
+
+Include the header and invoke `DEFINE_IHTAB(El, Hash, Eq)` to generate type-specific structs and functions with an `_El` suffix.  `Hash` and `Eq` are ordinary function names.
+
+```c
+#include "ihtab.h"
+
+typedef struct { uint32_t key; uint32_t value; } entry;
+
+static inline ihtab_hash_t entry_hash(entry e) {
+  return e.key * 0x9E3779B97F4A7C15ULL;
+}
+static inline bool entry_eq(entry a, entry b) {
+  return a.key == b.key;
+}
+
+DEFINE_IHTAB(entry, entry_hash, entry_eq)
+
+struct ihtab_entry t;
+ihtab_create_entry(&t, 1024);
+
+// Insert
+entry e = {42, 100};
+entry *res;
+if (!ihtab_perform_entry(&t, &e, IHTAB_INSERT, &res))
+  *res = e;
+
+// Replace (insert or update)
+entry e2 = {42, 200};
+ihtab_perform_entry(&t, &e2, IHTAB_REPLACE, &res);
+*res = e2;  // always write -- inserts if new, overwrites if exists
+
+// Find
+entry query = {42, 0};
+if (ihtab_perform_entry(&t, &query, IHTAB_FIND, &res))
+  printf("found: %u\n", res->value);
+
+// Delete
+ihtab_perform_entry(&t, &query, IHTAB_DELETE, &res);
+
+// Query
+printf("count=%lu size=%lu\n", ihtab_els_count_entry(&t), ihtab_size_entry(&t));
+
+// Iterate
+struct ihtab_iter_entry it = ihtab_iter_begin_entry(&t);
+while (ihtab_iter_valid_entry(&it)) {
+  printf("%u -> %u\n", it.ptr->key, it.ptr->value);
+  ihtab_iter_next_entry(&t, &it);
+}
+
+ihtab_destroy_entry(&t);
+```
+
+For ixhtab, replace `ihtab` / `IHTAB_*` / `DEFINE_IHTAB` with `ixhtab` / `IXHTAB_*` / `DEFINE_IXHTAB`.  Note: ixhtab provides `ixhtab_els_count` but has no `size` equivalent.
 
 ## Benchmarking
 
