@@ -1,7 +1,8 @@
 # ihtab / ixhtab — single-header indexed hash tables
 
-Two C++20 open-addressing hash tables with separate element storage.
-Both live in a single header; no build system required to use them.
+Two open-addressing hash tables with separate element storage, available
+as C++20 templates (`ihtab.hpp`, `ixhtab.hpp`) and C11 macro-generated
+headers (`ihtab.h`, `ixhtab.h`).  No build system required to use them.
 
 ## Design
 
@@ -18,15 +19,11 @@ array with a deleted-bit check — no empty-slot gaps.
 
 ### ihtab
 
-`ihtab.hpp` — flat indexed hash table.
-
 - Single contiguous element array, 32-bit slot indices.
 - 50 % load factor; rebuilds the whole table when full.
 - Fastest average lookup; suits general-purpose use.
 
 ### ixhtab
-
-`ixhtab.hpp` — indexed **extendible** hash table.
 
 - Directory of bins, each bin is an ihtab with 16-bit indices (max 2¹⁵
   elements per bin).
@@ -35,10 +32,10 @@ array with a deleted-bit check — no empty-slot gaps.
 - Trades a directory indirection for bounded rebuild latency; suits large
   tables or latency-sensitive workloads.
 
-## Usage
+## C++ Usage
 
-Both tables follow the same API.  Define an entry type that bundles key and
-value, plus a hash functor and equality functor, then instantiate.
+Both C++ tables follow the same API.  Define an entry type that bundles key
+and value, plus a hash functor and equality functor, then instantiate.
 
 ```cpp
 #include "ihtab.hpp"
@@ -68,25 +65,71 @@ t.perform(key, IHTAB_DELETE, &slot);
 // Iterate
 for (auto &e : t)
     printf("%llu -> %d\n", e.key, e.value);
-
-// t destroyed automatically at end of scope
 ```
 
-Replace `ihtab_t` / `IHTAB_*` with `ixhtab_t` / `IXHTAB_*` to use ixhtab.
+Replace `ihtab` / `IHTAB_*` with `ixhtab` / `IXHTAB_*` to use ixhtab.
 
-`do_` returns `true` when the element was found (FIND/DELETE) or already
+`perform` returns `true` when the element was found (FIND/DELETE) or already
 existed (INSERT/REPLACE), `false` on a new insertion.  On `false` from
 INSERT, `*slot` points to uninitialised memory — you must write the element.
 
+## C Usage
+
+Include the header and invoke the `DEFINE_IHTAB(El, Hash, Eq)` macro to
+generate type-specific structs and functions with an `_El` suffix.
+`Hash` and `Eq` are ordinary function names.
+
+```c
+#include "ihtab.h"
+
+typedef struct { uint64_t key; int value; } entry;
+
+static inline ihtab_hash_t entry_hash(entry e) { return e.key * 11400714819323198485ULL; }
+static inline bool entry_eq(entry a, entry b) { return a.key == b.key; }
+
+DEFINE_IHTAB(entry, entry_hash, entry_eq)
+
+// Creates: struct ihtab_entry, ihtab_create_entry, ihtab_perform_entry, etc.
+
+struct ihtab_entry t;
+ihtab_create_entry(&t, 64);
+
+// Insert
+entry e = {42, 100};
+entry *slot;
+if (!ihtab_perform_entry(&t, &e, IHTAB_INSERT, &slot))
+    *slot = e;
+
+// Lookup
+entry key = {42, 0};
+if (ihtab_perform_entry(&t, &key, IHTAB_FIND, &slot))
+    printf("%d\n", slot->value);
+
+// Delete
+ihtab_perform_entry(&t, &key, IHTAB_DELETE, &slot);
+
+// Iterate
+struct ihtab_iter_entry it = ihtab_iter_begin_entry(&t);
+while (ihtab_iter_valid_entry(&it)) {
+    printf("%llu -> %d\n", it.ptr->key, it.ptr->value);
+    ihtab_iter_next_entry(&t, &it);
+}
+
+ihtab_destroy_entry(&t);
+```
+
+Replace `ihtab` / `IHTAB_*` / `DEFINE_IHTAB` with `ixhtab` / `IXHTAB_*` /
+`DEFINE_IXHTAB` to use ixhtab.
+
 ## Requirements
 
-C++20 compiler.  x86/x86-64 uses SSE2; AArch64 uses NEON; other
+C++20 or C11 compiler.  x86/x86-64 uses SSE2; AArch64 uses NEON; other
 architectures fall back to portable SWAR bit tricks.
 
 ## Install
 
 ```sh
-make install            # copies ihtab.hpp and ixhtab.hpp to /usr/local/include
+make install            # copies all headers to /usr/local/include
 make install PREFIX=~/.local
 make uninstall
 ```
@@ -94,7 +137,7 @@ make uninstall
 ## Benchmark
 
 ```sh
-make test               # build and run vs absl::flat_hash_map
+make bench              # build and run vs absl::flat_hash_map
 ```
 
 Benchmarks run against `absl::flat_hash_map` with the vmum hash on
@@ -105,27 +148,23 @@ Geometric mean on AMD 9900x across all benchmarks (lower is better):
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   6.4 |  1.000x |
-| ixhtab         |   6.1 |  0.957x |
-| ihtab          |   4.3 |  0.677x |
-
-`ihtab` is ~49 % faster than absl on average; `ixhtab` is ~5 % faster.
+| C++ ixhtab     |   6.1 |  0.957x |
+| C++ ihtab      |   4.3 |  0.677x |
+| C ixhtab       |   6.0 |  0.942x |
+| C ihtab        |   3.9 |  0.612x |
 
 Geometric mean on Intel 270K+ across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   8.8 |  1.000x |
-| ixhtab         |   7.4 |  0.849x |
-| ihtab          |   5.1 |  0.581x |
+| C++ ixhtab     |   7.4 |  0.849x |
+| C++ ihtab      |   5.1 |  0.581x |
 
-`ihtab` is ~73 % faster than absl on average; `ixhtab` is ~19 % faster.
-  
 Geometric mean on Apple M4 across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   6.2 |  1.000x |
-| ixhtab         |   5.3 |  0.854x |
-| ihtab          |   3.9 |  0.625x |
-
-`ihtab` is ~59 % faster than absl on average; `ixhtab` is ~17 % faster.
+| C++ ixhtab     |   5.3 |  0.854x |
+| C++ ihtab      |   3.9 |  0.625x |

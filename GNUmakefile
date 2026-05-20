@@ -11,9 +11,9 @@ SRC     = benchmarks/bench.cpp
 BENCH_C = benchmarks/bench_c.c
 BENCH_O = benchmarks/bench_c.o
 
-.PHONY: test install uninstall clean
+.PHONY: bench install uninstall clean
 
-test: $(BENCH)
+bench: $(BENCH)
 	benchmarks/run_comparison.sh
 
 $(BENCH_O): $(BENCH_C) benchmarks/bench_c.h ihtab.h ixhtab.h vmum.h

@@ -232,21 +232,19 @@ public:
     using pointer           = El *;
     using reference         = El &;
 
-    char         *deleted;
-    El           *els;
+    ihtab        *htab;
     ihtab_size_t  el_idx;
-    ihtab_size_t  els_bound;
 
     FORCE_INLINE void advance () {
-      while (el_idx < els_bound) {
-        if (!(deleted[el_idx / 8] & (1 << (el_idx % 8))))
+      while (el_idx < htab->bin.els_bound) {
+        if (!(htab->bin.deleted[el_idx / 8] & (1 << (el_idx % 8))))
           return;
         ++el_idx;
       }
     }
 
-    FORCE_INLINE El &operator* () const { return  els[el_idx]; }
-    FORCE_INLINE El *operator->() const { return &els[el_idx]; }
+    FORCE_INLINE El &operator* () const { return  htab->bin.els[el_idx]; }
+    FORCE_INLINE El *operator->() const { return &htab->bin.els[el_idx]; }
     FORCE_INLINE iterator &operator++() { ++el_idx; advance (); return *this; }
     FORCE_INLINE iterator  operator++(int) { iterator t = *this; ++(*this); return t; }
     FORCE_INLINE bool operator==(const iterator &o) const { return el_idx == o.el_idx; }
@@ -254,12 +252,12 @@ public:
   };
 
   FORCE_INLINE iterator begin () {
-    iterator it{bin.deleted, bin.els, 0, bin.els_bound};
+    iterator it{this, 0};
     it.advance ();
     return it;
   }
 
-  FORCE_INLINE iterator end () { return {bin.deleted, bin.els, bin.els_bound, bin.els_bound}; }
+  FORCE_INLINE iterator end () { return {this, bin.els_bound}; }
 };
 
 #endif /* #ifndef IHTAB_H */
