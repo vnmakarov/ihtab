@@ -134,6 +134,16 @@ make install PREFIX=~/.local
 make uninstall
 ```
 
+## Test
+
+```sh
+make test               # build and run correctness tests
+```
+
+Tests cover insert, find, replace, delete, duplicate-key handling,
+iteration (both C++ forward iterators and lightweight iterators), and
+large tables (50 000 elements with deletions triggering rebuilds/splits).
+
 ## Benchmark
 
 ```sh
@@ -147,24 +157,28 @@ Geometric mean on AMD 9900x across all benchmarks (lower is better):
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   6.4 |  1.000x |
-| C++ ixhtab     |   6.1 |  0.957x |
-| C++ ihtab      |   4.3 |  0.677x |
-| C ixhtab       |   6.0 |  0.942x |
-| C ihtab        |   3.9 |  0.612x |
+| absl           |   6.8 |  1.000x |
+| C++ ixhtab     |   6.1 |  0.889x |
+| C++ ihtab      |   4.3 |  0.632x |
+| C ixhtab       |   6.0 |  0.881x |
+| C ihtab        |   3.9 |  0.575x |
 
 Geometric mean on Intel 270K+ across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   8.8 |  1.000x |
-| C++ ixhtab     |   7.4 |  0.849x |
-| C++ ihtab      |   5.1 |  0.581x |
+| absl           |   8.5 |  1.000x |
+| C++ ixhtab     |   7.3 |  0.863x |
+| C++ ihtab      |   5.1 |  0.603x |
+| C ixhtab       |   7.2 |  0.843x |
+| C ihtab        |   4.9 |  0.576x |
 
 Geometric mean on Apple M4 across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   6.2 |  1.000x |
-| C++ ixhtab     |   5.3 |  0.854x |
-| C++ ihtab      |   3.9 |  0.625x |
+| absl           |   5.9 |  1.000x |
+| C++ ixhtab     |   6.4 |  1.080x |
+| C++ ihtab      |   3.7 |  0.631x |
+| C ixhtab       |   5.3 |  0.889x |
+| C ihtab        |   3.6 |  0.601x |
