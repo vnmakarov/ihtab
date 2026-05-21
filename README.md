@@ -158,27 +158,27 @@ Geometric mean on AMD 9900x across all benchmarks (lower is better):
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   6.8 |  1.000x |
-| C++ ixhtab     |   6.1 |  0.889x |
-| C++ ihtab      |   4.3 |  0.632x |
-| C ixhtab       |   6.0 |  0.881x |
-| C ihtab        |   3.9 |  0.575x |
+| ixhtab         |   6.1 |  0.889x |
+| ihtab          |   4.3 |  0.632x |
+| ixht           |   6.0 |  0.881x |
+| iht            |   3.9 |  0.575x |
 
 Geometric mean on Intel 270K+ across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   8.5 |  1.000x |
-| C++ ixhtab     |   7.3 |  0.863x |
-| C++ ihtab      |   5.1 |  0.603x |
-| C ixhtab       |   7.2 |  0.843x |
-| C ihtab        |   4.9 |  0.576x |
+| ixhtab         |   7.3 |  0.863x |
+| ihtab          |   5.1 |  0.603x |
+| ixht           |   7.2 |  0.843x |
+| iht            |   4.9 |  0.576x |
 
 Geometric mean on Apple M4 across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   5.9 |  1.000x |
-| C++ ixhtab     |   6.4 |  1.080x |
-| C++ ihtab      |   3.7 |  0.631x |
-| C ixhtab       |   5.3 |  0.889x |
-| C ihtab        |   3.6 |  0.601x |
+| ixhtab         |   6.4 |  1.080x |
+| ihtab          |   3.7 |  0.631x |
+| ixht           |   5.3 |  0.889x |
+| iht            |   3.6 |  0.601x |
