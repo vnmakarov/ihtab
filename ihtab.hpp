@@ -7,7 +7,9 @@
 #include <cassert>
 #include <iterator>
 
-#define FORCE_INLINE __attribute__ ((always_inline)) inline
+#ifndef IHTAB_FORCE_INLINE
+#define IHTAB_FORCE_INLINE __attribute__ ((always_inline)) inline
+#endif
 
 typedef uint32_t ihtab_ind_t;
 typedef unsigned long ihtab_size_t;
@@ -26,15 +28,15 @@ static constexpr unsigned int IHTAB_LF_DIVISOR = 2;
 #include <immintrin.h>
 static const bool mask_scale = false;
 typedef __m128i ihtab_group_t;
-static FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
   return _mm_cvtsi64_si128 (*(const long long *) p);
 }
-static FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
   __m128i h7_vec = _mm_set1_epi8 ((char) h7_val);
   return (uint64_t) _mm_movemask_epi8 (_mm_cmpeq_epi8 (g, h7_vec)) & 0xff;
 }
 static const __m128i IHTAB_EMPTY_MASK = _mm_set1_epi8 ((char) 0x80);
-static FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
   return (uint64_t) _mm_movemask_epi8 (_mm_and_si128 (g, IHTAB_EMPTY_MASK)) & 0xff;
 }
 
@@ -43,16 +45,16 @@ static FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
 #include <arm_neon.h>
 static const bool mask_scale = false;
 typedef uint64_t ihtab_group_t;
-static FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
   return *(const ihtab_group_t *) p;
 }
-static FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
   uint8x8_t group = vcreate_u8 (g);
   uint8x8_t match_eq = vceq_u8 (group, vdup_n_u8 (h7_val));
   static const uint8x8_t bit_mask = {1, 2, 4, 8, 16, 32, 64, 128};
   return (uint64_t) vaddv_u8 (vand_u8 (match_eq, bit_mask));
 }
-static FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
   return ihtab_match_mask (g, IHTAB_EMPTY_H7);
 }
 
@@ -62,16 +64,18 @@ static const bool mask_scale = true;
 static constexpr uint64_t IHTAB_SWAR_LSB = 0x0101010101010101ULL;
 static constexpr uint64_t IHTAB_SWAR_MSB = 0x8080808080808080ULL;
 typedef uint64_t ihtab_group_t;
-static FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) { return *(const uint64_t *) p; }
-static FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+  return *(const uint64_t *) p;
+}
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
   uint64_t cmp = g ^ (IHTAB_SWAR_LSB * h7_val);
   return (cmp - IHTAB_SWAR_LSB) & ~cmp & IHTAB_SWAR_MSB;
 }
-static FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHTAB_SWAR_MSB; }
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHTAB_SWAR_MSB; }
 
 #endif
 
-enum ihtab_action { IHTAB_FIND, IHTAB_INSERT, IHTAB_REPLACE, IHTAB_DELETE };
+enum ihtab_action { IHTAB_FIND, IHTAB_DELETE, IHTAB_INSERT, IHTAB_REPLACE };
 
 template <typename El>
 struct hbin_ihtab_t {
@@ -119,7 +123,7 @@ class ihtab {
     std::free (b.entries);
   }
 
-  FORCE_INLINE bool do_1 (hbin_ihtab_t<El> &b, El &el, enum ihtab_action action, El **res) {
+  IHTAB_FORCE_INLINE bool do_1 (hbin_ihtab_t<El> &b, El &el, enum ihtab_action action, El **res) {
     Hash hash_fn;
     Eq eq_fn;
     ihtab_hash_t hash = hash_fn (el);
@@ -153,7 +157,7 @@ class ihtab {
 
       uint64_t empty_mask = ihtab_match_empty (group);
       if (empty_mask) {
-        if (action == IHTAB_INSERT || action == IHTAB_REPLACE) {
+        if (action >= IHTAB_INSERT) {
           els_num++;
           ihtab_size_t slot;
           if (first_deleted_slot != ~(ihtab_size_t) 0) {
@@ -205,10 +209,12 @@ class ihtab {
   }
 
  public:
-  FORCE_INLINE bool perform (El &el, enum ihtab_action action, El **res) {
-    ihtab_size_t entries_size = (bin.groups_mask + 1) * IHTAB_GROUP_SIZE;
-    ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;
-    if (action != IHTAB_DELETE && __builtin_expect (bin.els_bound >= els_size, 0)) rebuild ();
+  IHTAB_FORCE_INLINE bool perform (El &el, enum ihtab_action action, El **res) {
+    if (action >= IHTAB_INSERT) {
+      ihtab_size_t entries_size = (bin.groups_mask + 1) * IHTAB_GROUP_SIZE;
+      ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR - 1;
+      if (__builtin_expect (bin.els_bound >= els_size, 0)) rebuild ();
+    }
     return do_1 (bin, el, action, res);
   }
 
@@ -223,7 +229,7 @@ class ihtab {
     El *ptr;
   };
 
-  FORCE_INLINE void iter_advance (ihtab_iter &it) {
+  IHTAB_FORCE_INLINE void iter_advance (ihtab_iter &it) {
     while (it.el_idx < bin.els_bound) {
       if (!(bin.deleted[it.el_idx / 8] & (1 << (it.el_idx % 8)))) {
         it.ptr = &bin.els[it.el_idx];
@@ -234,7 +240,7 @@ class ihtab {
     it.ptr = nullptr;
   }
 
-  FORCE_INLINE ihtab_iter iter_begin () {
+  IHTAB_FORCE_INLINE ihtab_iter iter_begin () {
     ihtab_iter it;
     it.el_idx = 0;
     it.ptr = nullptr;
@@ -242,9 +248,9 @@ class ihtab {
     return it;
   }
 
-  static FORCE_INLINE bool iter_valid (ihtab_iter &it) { return it.ptr != nullptr; }
+  static IHTAB_FORCE_INLINE bool iter_valid (ihtab_iter &it) { return it.ptr != nullptr; }
 
-  FORCE_INLINE void iter_next (ihtab_iter &it) {
+  IHTAB_FORCE_INLINE void iter_next (ihtab_iter &it) {
     ++it.el_idx;
     iter_advance (it);
   }
@@ -259,36 +265,36 @@ class ihtab {
     ihtab *htab;
     ihtab_size_t el_idx;
 
-    FORCE_INLINE void advance () {
+    IHTAB_FORCE_INLINE void advance () {
       while (el_idx < htab->bin.els_bound) {
         if (!(htab->bin.deleted[el_idx / 8] & (1 << (el_idx % 8)))) return;
         ++el_idx;
       }
     }
 
-    FORCE_INLINE El &operator* () const { return htab->bin.els[el_idx]; }
-    FORCE_INLINE El *operator->() const { return &htab->bin.els[el_idx]; }
-    FORCE_INLINE iterator &operator++ () {
+    IHTAB_FORCE_INLINE El &operator* () const { return htab->bin.els[el_idx]; }
+    IHTAB_FORCE_INLINE El *operator->() const { return &htab->bin.els[el_idx]; }
+    IHTAB_FORCE_INLINE iterator &operator++ () {
       ++el_idx;
       advance ();
       return *this;
     }
-    FORCE_INLINE iterator operator++ (int) {
+    IHTAB_FORCE_INLINE iterator operator++ (int) {
       iterator t = *this;
       ++(*this);
       return t;
     }
-    FORCE_INLINE bool operator== (const iterator &o) const { return el_idx == o.el_idx; }
-    FORCE_INLINE bool operator!= (const iterator &o) const { return el_idx != o.el_idx; }
+    IHTAB_FORCE_INLINE bool operator== (const iterator &o) const { return el_idx == o.el_idx; }
+    IHTAB_FORCE_INLINE bool operator!= (const iterator &o) const { return el_idx != o.el_idx; }
   };
 
-  FORCE_INLINE iterator begin () {
+  IHTAB_FORCE_INLINE iterator begin () {
     iterator it{this, 0};
     it.advance ();
     return it;
   }
 
-  FORCE_INLINE iterator end () { return {this, bin.els_bound}; }
+  IHTAB_FORCE_INLINE iterator end () { return {this, bin.els_bound}; }
 };
 
 #endif /* #ifndef IHTAB_H */

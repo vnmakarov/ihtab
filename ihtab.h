@@ -8,7 +8,7 @@
 #include <assert.h>
 
 #ifndef IHTAB_FORCE_INLINE
-#define IHTAB_FORCE_INLINE __attribute__ ((always_inline)) static inline
+#define IHTAB_FORCE_INLINE __attribute__ ((always_inline)) inline
 #endif
 
 typedef uint32_t ihtab_ind_t;
@@ -22,7 +22,7 @@ typedef size_t ihtab_hash_t;
 #define IHTAB_LF_FACTOR 1
 #define IHTAB_LF_DIVISOR 2
 
-enum ihtab_action { IHTAB_FIND, IHTAB_INSERT, IHTAB_REPLACE, IHTAB_DELETE };
+enum ihtab_action { IHTAB_FIND, IHTAB_DELETE, IHTAB_INSERT, IHTAB_REPLACE };
 
 /* ===== SIMD / SWAR platform selection ===== */
 
@@ -33,14 +33,14 @@ enum ihtab_action { IHTAB_FIND, IHTAB_INSERT, IHTAB_REPLACE, IHTAB_DELETE };
 #define IHTAB_MASK_SCALE 0
 typedef __m128i ihtab_group_t;
 
-IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
   return _mm_cvtsi64_si128 (*(const long long *) p);
 }
-IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
   __m128i h7_vec = _mm_set1_epi8 ((char) h7_val);
   return (uint64_t) _mm_movemask_epi8 (_mm_cmpeq_epi8 (g, h7_vec)) & 0xff;
 }
-IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
   __m128i mask = _mm_set1_epi8 ((char) 0x80);
   return (uint64_t) _mm_movemask_epi8 (_mm_and_si128 (g, mask)) & 0xff;
 }
@@ -51,16 +51,16 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
 #define IHTAB_MASK_SCALE 0
 typedef uint64_t ihtab_group_t;
 
-IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
   return *(const ihtab_group_t *) p;
 }
-IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
   uint8x8_t group = vcreate_u8 (g);
   uint8x8_t match_eq = vceq_u8 (group, vdup_n_u8 (h7_val));
   static const uint8x8_t bit_mask = {1, 2, 4, 8, 16, 32, 64, 128};
   return (uint64_t) vaddv_u8 (vand_u8 (match_eq, bit_mask));
 }
-IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
   return ihtab_match_mask (g, IHTAB_EMPTY_H7);
 }
 
@@ -71,12 +71,14 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
 #define IHTAB_SWAR_MSB 0x8080808080808080ULL
 typedef uint64_t ihtab_group_t;
 
-IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) { return *(const uint64_t *) p; }
-IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+  return *(const uint64_t *) p;
+}
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
   uint64_t cmp = g ^ (IHTAB_SWAR_LSB * h7_val);
   return (cmp - IHTAB_SWAR_LSB) & ~cmp & IHTAB_SWAR_MSB;
 }
-IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHTAB_SWAR_MSB; }
+static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHTAB_SWAR_MSB; }
 
 #endif
 
@@ -103,15 +105,15 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHT
     El *ptr;                                                                                                 \
   };                                                                                                         \
                                                                                                              \
-  IHTAB_FORCE_INLINE void ihtab_destroy_bin_##El (struct hbin_ihtab_##El *b) {                               \
+  static IHTAB_FORCE_INLINE void ihtab_destroy_bin_##El (struct hbin_ihtab_##El *b) {                        \
     free (b->els);                                                                                           \
     free (b->deleted);                                                                                       \
     free (b->h7);                                                                                            \
     free (b->entries);                                                                                       \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE bool ihtab_do_1_##El (struct ihtab_##El *t, struct hbin_ihtab_##El *b, El *el,          \
-                                           enum ihtab_action action, El **res) {                             \
+  static IHTAB_FORCE_INLINE bool ihtab_do_1_##El (struct ihtab_##El *t, struct hbin_ihtab_##El *b, El *el,   \
+                                                  enum ihtab_action action, El **res) {                      \
     ihtab_hash_t hash = Hash (*el);                                                                          \
     unsigned char h7_val = (hash >> (sizeof (size_t) * 8 - 7)) & 0x7f;                                       \
     ihtab_size_t group_ind = (hash / IHTAB_GROUP_SIZE) & b->groups_mask;                                     \
@@ -141,7 +143,7 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHT
       }                                                                                                      \
       uint64_t emask = ihtab_match_empty (group);                                                            \
       if (emask) {                                                                                           \
-        if (action == IHTAB_INSERT || action == IHTAB_REPLACE) {                                             \
+        if (action >= IHTAB_INSERT) {                                                                        \
           t->els_num++;                                                                                      \
           ihtab_size_t slot;                                                                                 \
           if (first_deleted_slot != ~(ihtab_size_t) 0) {                                                     \
@@ -191,7 +193,7 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHT
     t->bin = rb;                                                                                             \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE void ihtab_create_##El (struct ihtab_##El *t, ihtab_size_t min_size) {                  \
+  static IHTAB_FORCE_INLINE void ihtab_create_##El (struct ihtab_##El *t, ihtab_size_t min_size) {           \
     ihtab_size_t entries_size = IHTAB_GROUP_SIZE;                                                            \
     while (entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR < min_size) entries_size *= 2;                  \
     ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;                               \
@@ -206,24 +208,30 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHT
     t->bin.groups_mask = entries_size / IHTAB_GROUP_SIZE - 1;                                                \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE void ihtab_destroy_##El (struct ihtab_##El *t) { ihtab_destroy_bin_##El (&t->bin); }    \
+  static IHTAB_FORCE_INLINE void ihtab_destroy_##El (struct ihtab_##El *t) {                                 \
+    ihtab_destroy_bin_##El (&t->bin);                                                                        \
+  }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE bool ihtab_perform_##El (struct ihtab_##El *t, El *el, enum ihtab_action action,        \
-                                              El **res) {                                                    \
-    ihtab_size_t entries_size = (t->bin.groups_mask + 1) * IHTAB_GROUP_SIZE;                                 \
-    ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;                               \
-    if (action != IHTAB_DELETE && __builtin_expect (t->bin.els_bound >= els_size, 0))                        \
-      ihtab_rebuild_##El (t);                                                                                \
+  static IHTAB_FORCE_INLINE bool ihtab_perform_##El (struct ihtab_##El *t, El *el, enum ihtab_action action, \
+                                                     El **res) {                                             \
+    if (action >= IHTAB_INSERT) {                                                                            \
+      ihtab_size_t entries_size = (t->bin.groups_mask + 1) * IHTAB_GROUP_SIZE;                               \
+      ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR - 1;                         \
+      if (__builtin_expect (t->bin.els_bound >= els_size, 0)) ihtab_rebuild_##El (t);                        \
+    }                                                                                                        \
     return ihtab_do_1_##El (t, &t->bin, el, action, res);                                                    \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE ihtab_size_t ihtab_els_count_##El (const struct ihtab_##El *t) { return t->els_num; }   \
+  static IHTAB_FORCE_INLINE ihtab_size_t ihtab_els_count_##El (const struct ihtab_##El *t) {                 \
+    return t->els_num;                                                                                       \
+  }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE ihtab_size_t ihtab_size_##El (const struct ihtab_##El *t) {                             \
+  static IHTAB_FORCE_INLINE ihtab_size_t ihtab_size_##El (const struct ihtab_##El *t) {                      \
     return (t->bin.groups_mask + 1) * IHTAB_GROUP_SIZE * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;                 \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE void ihtab_iter_advance_##El (const struct ihtab_##El *t, struct ihtab_iter_##El *it) { \
+  static IHTAB_FORCE_INLINE void ihtab_iter_advance_##El (const struct ihtab_##El *t,                        \
+                                                          struct ihtab_iter_##El *it) {                      \
     while (it->el_idx < t->bin.els_bound) {                                                                  \
       if (!(t->bin.deleted[it->el_idx / 8] & (1 << (it->el_idx % 8)))) {                                     \
         it->ptr = &t->bin.els[it->el_idx];                                                                   \
@@ -234,7 +242,7 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHT
     it->ptr = NULL;                                                                                          \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE struct ihtab_iter_##El ihtab_iter_begin_##El (const struct ihtab_##El *t) {             \
+  static IHTAB_FORCE_INLINE struct ihtab_iter_##El ihtab_iter_begin_##El (const struct ihtab_##El *t) {      \
     struct ihtab_iter_##El it;                                                                               \
     it.el_idx = 0;                                                                                           \
     it.ptr = NULL;                                                                                           \
@@ -242,11 +250,12 @@ IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHT
     return it;                                                                                               \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE bool ihtab_iter_valid_##El (const struct ihtab_iter_##El *it) {                         \
+  static IHTAB_FORCE_INLINE bool ihtab_iter_valid_##El (const struct ihtab_iter_##El *it) {                  \
     return it->ptr != NULL;                                                                                  \
   }                                                                                                          \
                                                                                                              \
-  IHTAB_FORCE_INLINE void ihtab_iter_next_##El (const struct ihtab_##El *t, struct ihtab_iter_##El *it) {    \
+  static IHTAB_FORCE_INLINE void ihtab_iter_next_##El (const struct ihtab_##El *t,                           \
+                                                       struct ihtab_iter_##El *it) {                         \
     ++it->el_idx;                                                                                            \
     ihtab_iter_advance_##El (t, it);                                                                         \
   }

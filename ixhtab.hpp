@@ -7,7 +7,9 @@
 #include <cassert>
 #include <iterator>
 
-#define FORCE_INLINE __attribute__ ((always_inline)) inline
+#ifndef IXHTAB_FORCE_INLINE
+#define IXHTAB_FORCE_INLINE __attribute__ ((always_inline)) inline
+#endif
 
 typedef uint16_t ixhtab_ind_t;
 typedef size_t ixhtab_hash_t;
@@ -22,7 +24,7 @@ static constexpr unsigned int IXHTAB_MAX_BIN_SIZE_POWER = 15;
 
 static_assert (IXHTAB_MAX_BIN_SIZE_POWER <= 15, "bin size must fit in uint16_t entries");
 
-enum ixhtab_action { IXHTAB_FIND, IXHTAB_INSERT, IXHTAB_REPLACE, IXHTAB_DELETE };
+enum ixhtab_action { IXHTAB_FIND, IXHTAB_DELETE, IXHTAB_INSERT, IXHTAB_REPLACE };
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 
@@ -30,16 +32,16 @@ enum ixhtab_action { IXHTAB_FIND, IXHTAB_INSERT, IXHTAB_REPLACE, IXHTAB_DELETE }
 static const bool ixhtab_mask_scale = false;
 typedef __m128i ixhtab_group_t;
 
-static FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
+static IXHTAB_FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
   return _mm_cvtsi64_si128 (*(const long long *) p);
 }
 
-static FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
+static IXHTAB_FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
   __m128i h7_vec = _mm_set1_epi8 ((char) h7_val);
   return (unsigned int) _mm_movemask_epi8 (_mm_cmpeq_epi8 (g, h7_vec)) & 0xff;
 }
 
-static FORCE_INLINE unsigned int ixhtab_match_empty (ixhtab_group_t g) {
+static IXHTAB_FORCE_INLINE unsigned int ixhtab_match_empty (ixhtab_group_t g) {
   return (unsigned int) _mm_movemask_epi8 (g) & 0xff;
 }
 
@@ -49,18 +51,18 @@ static FORCE_INLINE unsigned int ixhtab_match_empty (ixhtab_group_t g) {
 static const bool ixhtab_mask_scale = false;
 typedef uint64_t ixhtab_group_t;
 
-static FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
+static IXHTAB_FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
   return *(const uint64_t *) p;
 }
 
-static FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
+static IXHTAB_FORCE_INLINE unsigned int ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
   uint8x8_t group = vcreate_u8 (g);
   uint8x8_t match_eq = vceq_u8 (group, vdup_n_u8 (h7_val));
   static const uint8x8_t bit_mask = {1, 2, 4, 8, 16, 32, 64, 128};
   return (unsigned int) vaddv_u8 (vand_u8 (match_eq, bit_mask));
 }
 
-static FORCE_INLINE unsigned int ixhtab_match_empty (ixhtab_group_t g) {
+static IXHTAB_FORCE_INLINE unsigned int ixhtab_match_empty (ixhtab_group_t g) {
   return ixhtab_match_mask (g, IXHTAB_EMPTY_H7);
 }
 
@@ -71,16 +73,16 @@ static constexpr uint64_t IXHTAB_SWAR_LSB = 0x0101010101010101ULL;
 static constexpr uint64_t IXHTAB_SWAR_MSB = 0x8080808080808080ULL;
 typedef uint64_t ixhtab_group_t;
 
-static FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
+static IXHTAB_FORCE_INLINE ixhtab_group_t ixhtab_group_load (const unsigned char *p) {
   return *(const uint64_t *) p;
 }
 
-static FORCE_INLINE uint64_t ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
+static IXHTAB_FORCE_INLINE uint64_t ixhtab_match_mask (ixhtab_group_t g, unsigned char h7_val) {
   uint64_t cmp = g ^ (IXHTAB_SWAR_LSB * h7_val);
   return (cmp - IXHTAB_SWAR_LSB) & ~cmp & IXHTAB_SWAR_MSB;
 }
 
-static FORCE_INLINE uint64_t ixhtab_match_empty (ixhtab_group_t g) { return g & IXHTAB_SWAR_MSB; }
+static IXHTAB_FORCE_INLINE uint64_t ixhtab_match_empty (ixhtab_group_t g) { return g & IXHTAB_SWAR_MSB; }
 
 #endif
 
@@ -174,8 +176,8 @@ class ixhtab {
   }
 
  private:
-  FORCE_INLINE bool do_1 (ebin_ixhtab_t<El> &bin, ixhtab_hash_t hash, El &el, enum ixhtab_action action,
-                          El **res) {
+  IXHTAB_FORCE_INLINE bool do_1 (ebin_ixhtab_t<El> &bin, ixhtab_hash_t hash, El &el,
+                                 enum ixhtab_action action, El **res) {
     Eq eq_fn;
     unsigned char h7_val = (hash >> (sizeof (size_t) * 8 - 7)) & 0x7f;
     unsigned int group_ind = (unsigned int) (hash / IXHTAB_GROUP_SIZE) & bin.groups_mask;
@@ -207,7 +209,7 @@ class ixhtab {
 
       auto empty_mask = ixhtab_match_empty (group);
       if (empty_mask) {
-        if (action == IXHTAB_INSERT || action == IXHTAB_REPLACE) {
+        if (action >= IXHTAB_INSERT) {
           els_num++;
           unsigned int slot;
           if (first_deleted_slot != ~0u) {
@@ -283,49 +285,51 @@ class ixhtab {
   }
 
  public:
-  FORCE_INLINE bool perform (El &el, enum ixhtab_action action, El **res) {
+  IXHTAB_FORCE_INLINE bool perform (El &el, enum ixhtab_action action, El **res) {
     Hash hash_fn;
     ixhtab_hash_t hash = hash_fn (el);
     if (hash == 0) hash = 1;
     ixhtab_hash_t dir_ind = hash & bin_mask;
     ebin_ixhtab_ind_t bin_ind = dir[dir_ind];
     auto &bin = bins[bin_ind];
-    unsigned int entries_size = (bin.groups_mask + 1) * IXHTAB_GROUP_SIZE;
-    unsigned int els_size = entries_size / 2;
-    if ((action == IXHTAB_INSERT || action == IXHTAB_REPLACE) && bin.els_bound == els_size) {
-      bool grow = false;
-      if (2 * els_num >= entries_size) {
-        entries_size *= 2;
-        els_size *= 2;
-        grow = true;
-      }
-      if (grow && els_size >= (1u << IXHTAB_MAX_BIN_SIZE_POWER)) {
-        split_bin (bin_ind);
-        bin_ind = dir[hash & bin_mask];
-      } else {
-        auto &b = bins[bin_ind];
-        char *old_deleted = b.deleted;
-        unsigned int del_bytes = (els_size + 7) / 8;
-        b.deleted = (char *) std::calloc (del_bytes, 1);
-        b.els = (El *) std::realloc (b.els, els_size * sizeof (El));
-        b.h7 = (unsigned char *) std::realloc (b.h7, entries_size);
-        std::memset (b.h7, IXHTAB_EMPTY_H7, entries_size);
-        b.entries = (ixhtab_ind_t *) std::realloc (b.entries, entries_size * sizeof (ixhtab_ind_t));
-        b.groups_mask = entries_size / IXHTAB_GROUP_SIZE - 1;
-        unsigned int start = b.els_start, bound = b.els_bound;
-        b.els_start = b.els_bound = 0;
-        unsigned int saved_els_num = els_num;
-        els_num = 0;
-        for (unsigned int i = start; i < bound; i++) {
-          if (old_deleted[i / 8] & (1 << (i % 8))) continue;
-          ixhtab_hash_t hash2 = hash_fn (b.els[i]);
-          if (hash2 == 0) hash2 = 1;
-          El *r;
-          do_1 (b, hash2, b.els[i], IXHTAB_INSERT, &r);
-          *r = b.els[i];
+    if (action >= IXHTAB_INSERT) {
+      unsigned int entries_size = (bin.groups_mask + 1) * IXHTAB_GROUP_SIZE;
+      unsigned int els_size = entries_size / 2;
+      if (bin.els_bound == els_size) {
+        bool grow = false;
+        if (2 * els_num >= entries_size) {
+          entries_size *= 2;
+          els_size *= 2;
+          grow = true;
         }
-        els_num = saved_els_num;
-        std::free (old_deleted);
+        if (grow && els_size >= (1u << IXHTAB_MAX_BIN_SIZE_POWER)) {
+          split_bin (bin_ind);
+          bin_ind = dir[hash & bin_mask];
+        } else {
+          auto &b = bins[bin_ind];
+          char *old_deleted = b.deleted;
+          unsigned int del_bytes = (els_size + 7) / 8;
+          b.deleted = (char *) std::calloc (del_bytes, 1);
+          b.els = (El *) std::realloc (b.els, els_size * sizeof (El));
+          b.h7 = (unsigned char *) std::realloc (b.h7, entries_size);
+          std::memset (b.h7, IXHTAB_EMPTY_H7, entries_size);
+          b.entries = (ixhtab_ind_t *) std::realloc (b.entries, entries_size * sizeof (ixhtab_ind_t));
+          b.groups_mask = entries_size / IXHTAB_GROUP_SIZE - 1;
+          unsigned int start = b.els_start, bound = b.els_bound;
+          b.els_start = b.els_bound = 0;
+          unsigned int saved_els_num = els_num;
+          els_num = 0;
+          for (unsigned int i = start; i < bound; i++) {
+            if (old_deleted[i / 8] & (1 << (i % 8))) continue;
+            ixhtab_hash_t hash2 = hash_fn (b.els[i]);
+            if (hash2 == 0) hash2 = 1;
+            El *r;
+            do_1 (b, hash2, b.els[i], IXHTAB_INSERT, &r);
+            *r = b.els[i];
+          }
+          els_num = saved_els_num;
+          std::free (old_deleted);
+        }
       }
     }
     return do_1 (bins[bin_ind], hash, el, action, res);
@@ -339,7 +343,7 @@ class ixhtab {
     El *ptr;
   };
 
-  FORCE_INLINE void iter_advance (ixhtab_iter &it) {
+  IXHTAB_FORCE_INLINE void iter_advance (ixhtab_iter &it) {
     while (it.bin_idx < bins_num) {
       auto &b = bins[it.bin_idx];
       while (it.el_idx < b.els_bound) {
@@ -355,7 +359,7 @@ class ixhtab {
     it.ptr = nullptr;
   }
 
-  FORCE_INLINE ixhtab_iter iter_begin () {
+  IXHTAB_FORCE_INLINE ixhtab_iter iter_begin () {
     ixhtab_iter it;
     it.bin_idx = 0;
     it.el_idx = bins_num > 0 ? bins[0].els_start : 0;
@@ -364,9 +368,9 @@ class ixhtab {
     return it;
   }
 
-  static FORCE_INLINE bool iter_valid (ixhtab_iter &it) { return it.ptr != nullptr; }
+  static IXHTAB_FORCE_INLINE bool iter_valid (ixhtab_iter &it) { return it.ptr != nullptr; }
 
-  FORCE_INLINE void iter_next (ixhtab_iter &it) {
+  IXHTAB_FORCE_INLINE void iter_next (ixhtab_iter &it) {
     ++it.el_idx;
     iter_advance (it);
   }
@@ -382,7 +386,7 @@ class ixhtab {
     unsigned int bin_idx;
     unsigned int el_idx;
 
-    FORCE_INLINE void advance () {
+    IXHTAB_FORCE_INLINE void advance () {
       while (bin_idx < tab->bins_num) {
         auto &b = tab->bins[bin_idx];
         while (el_idx < b.els_bound) {
@@ -394,31 +398,31 @@ class ixhtab {
       }
     }
 
-    FORCE_INLINE El &operator* () const { return tab->bins[bin_idx].els[el_idx]; }
-    FORCE_INLINE El *operator->() const { return &tab->bins[bin_idx].els[el_idx]; }
-    FORCE_INLINE iterator &operator++ () {
+    IXHTAB_FORCE_INLINE El &operator* () const { return tab->bins[bin_idx].els[el_idx]; }
+    IXHTAB_FORCE_INLINE El *operator->() const { return &tab->bins[bin_idx].els[el_idx]; }
+    IXHTAB_FORCE_INLINE iterator &operator++ () {
       ++el_idx;
       advance ();
       return *this;
     }
-    FORCE_INLINE iterator operator++ (int) {
+    IXHTAB_FORCE_INLINE iterator operator++ (int) {
       iterator t = *this;
       ++(*this);
       return t;
     }
-    FORCE_INLINE bool operator== (const iterator &o) const {
+    IXHTAB_FORCE_INLINE bool operator== (const iterator &o) const {
       return bin_idx == o.bin_idx && el_idx == o.el_idx;
     }
-    FORCE_INLINE bool operator!= (const iterator &o) const { return !(*this == o); }
+    IXHTAB_FORCE_INLINE bool operator!= (const iterator &o) const { return !(*this == o); }
   };
 
-  FORCE_INLINE iterator begin () {
+  IXHTAB_FORCE_INLINE iterator begin () {
     iterator it{this, 0, bins_num > 0 ? bins[0].els_start : 0};
     it.advance ();
     return it;
   }
 
-  FORCE_INLINE iterator end () { return {this, bins_num, 0}; }
+  IXHTAB_FORCE_INLINE iterator end () { return {this, bins_num, 0}; }
 };
 
 #endif /* #ifndef IXHTAB_H */
