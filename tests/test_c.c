@@ -3,12 +3,12 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "ihtab.h"
-#include "ixhtab.h"
+#include "iht.h"
+#include "ixht.h"
 
 typedef struct { uint32_t key; uint32_t value; } entry;
 
-static inline ihtab_hash_t entry_hash(entry e) {
+static inline iht_hash_t entry_hash(entry e) {
   return e.key * 0x9E3779B97F4A7C15ULL;
 }
 
@@ -16,8 +16,8 @@ static inline bool entry_eq(entry a, entry b) {
   return a.key == b.key;
 }
 
-DEFINE_IHTAB(entry, entry_hash, entry_eq)
-DEFINE_IXHTAB(entry, entry_hash, entry_eq)
+DEFINE_IHT(entry, entry_hash, entry_eq)
+DEFINE_IXHT(entry, entry_hash, entry_eq)
 
 #define TEST_HTAB(pfx, PFX)                                                \
                                                                            \
@@ -158,12 +158,12 @@ static void pfx##_test_all(void) {                                         \
   pfx##_test_large();                                                      \
 }
 
-TEST_HTAB(ihtab, IHTAB)
-TEST_HTAB(ixhtab, IXHTAB)
+TEST_HTAB(iht, IHT)
+TEST_HTAB(ixht, IXHT)
 
 int main() {
-  ihtab_test_all();
-  ixhtab_test_all();
+  iht_test_all();
+  ixht_test_all();
   printf("All tests passed.\n");
   return 0;
 }

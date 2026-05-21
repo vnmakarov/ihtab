@@ -2,7 +2,7 @@
 
 Two open-addressing hash tables with separate element storage, available
 as C++20 templates (`ihtab.hpp`, `ixhtab.hpp`) and C11 macro-generated
-headers (`ihtab.h`, `ixhtab.h`).  No build system required to use them.
+headers (`iht.h`, `ixht.h`).  No build system required to use them.
 
 ## Design
 
@@ -75,51 +75,51 @@ INSERT, `*slot` points to uninitialised memory — you must write the element.
 
 ## C Usage
 
-Include the header and invoke the `DEFINE_IHTAB(El, Hash, Eq)` macro to
+Include the header and invoke the `DEFINE_IHT(El, Hash, Eq)` macro to
 generate type-specific structs and functions with an `_El` suffix.
 `Hash` and `Eq` are ordinary function names.
 
 ```c
-#include "ihtab.h"
+#include "iht.h"
 
 typedef struct { uint64_t key; int value; } entry;
 
-static inline ihtab_hash_t entry_hash(entry e) { return e.key * 11400714819323198485ULL; }
+static inline iht_hash_t entry_hash(entry e) { return e.key * 11400714819323198485ULL; }
 static inline bool entry_eq(entry a, entry b) { return a.key == b.key; }
 
-DEFINE_IHTAB(entry, entry_hash, entry_eq)
+DEFINE_IHT(entry, entry_hash, entry_eq)
 
-// Creates: struct ihtab_entry, ihtab_create_entry, ihtab_perform_entry, etc.
+// Creates: struct iht_entry, iht_create_entry, iht_perform_entry, etc.
 
-struct ihtab_entry t;
-ihtab_create_entry(&t, 64);
+struct iht_entry t;
+iht_create_entry(&t, 64);
 
 // Insert
 entry e = {42, 100};
 entry *slot;
-if (!ihtab_perform_entry(&t, &e, IHTAB_INSERT, &slot))
+if (!iht_perform_entry(&t, &e, IHT_INSERT, &slot))
     *slot = e;
 
 // Lookup
 entry key = {42, 0};
-if (ihtab_perform_entry(&t, &key, IHTAB_FIND, &slot))
+if (iht_perform_entry(&t, &key, IHT_FIND, &slot))
     printf("%d\n", slot->value);
 
 // Delete
-ihtab_perform_entry(&t, &key, IHTAB_DELETE, &slot);
+iht_perform_entry(&t, &key, IHT_DELETE, &slot);
 
 // Iterate
-struct ihtab_iter_entry it = ihtab_iter_begin_entry(&t);
-while (ihtab_iter_valid_entry(&it)) {
+struct iht_iter_entry it = iht_iter_begin_entry(&t);
+while (iht_iter_valid_entry(&it)) {
     printf("%llu -> %d\n", it.ptr->key, it.ptr->value);
-    ihtab_iter_next_entry(&t, &it);
+    iht_iter_next_entry(&t, &it);
 }
 
-ihtab_destroy_entry(&t);
+iht_destroy_entry(&t);
 ```
 
-Replace `ihtab` / `IHTAB_*` / `DEFINE_IHTAB` with `ixhtab` / `IXHTAB_*` /
-`DEFINE_IXHTAB` to use ixhtab.
+Replace `iht` / `IHT_*` / `DEFINE_IHT` with `ixht` / `IXHT_*` /
+`DEFINE_IXHT` to use ixhtab.
 
 ## Requirements
 

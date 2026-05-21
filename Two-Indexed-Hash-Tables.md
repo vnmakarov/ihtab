@@ -60,7 +60,7 @@ Empty detection is even cheaper: since empty slots have bit 7 set (0x80) and val
 
 ## Usage
 
-Both are header-only.  C++ versions use templates (`ihtab.hpp`, `ixhtab.hpp`); C versions use a macro to stamp out typed definitions (`ihtab.h`, `ixhtab.h`).
+Both are header-only.  C++ versions use templates (`ihtab.hpp`, `ixhtab.hpp`); C versions use a macro to stamp out typed definitions (`iht.h`, `ixht.h`).
 
 ### C++
 
@@ -137,59 +137,59 @@ ixhtab also provides a lightweight `ixhtab_iter` (bin index, element index, and 
 
 ### C
 
-Include the header and invoke `DEFINE_IHTAB(El, Hash, Eq)` to generate type-specific structs and functions with an `_El` suffix.  `Hash` and `Eq` are ordinary function names.
+Include the header and invoke `DEFINE_IHT(El, Hash, Eq)` to generate type-specific structs and functions with an `_El` suffix.  `Hash` and `Eq` are ordinary function names.
 
 ```c
-#include "ihtab.h"
+#include "iht.h"
 
 typedef struct { uint32_t key; uint32_t value; } entry;
 
-static inline ihtab_hash_t entry_hash(entry e) {
+static inline iht_hash_t entry_hash(entry e) {
   return e.key * 0x9E3779B97F4A7C15ULL;
 }
 static inline bool entry_eq(entry a, entry b) {
   return a.key == b.key;
 }
 
-DEFINE_IHTAB(entry, entry_hash, entry_eq)
+DEFINE_IHT(entry, entry_hash, entry_eq)
 
-struct ihtab_entry t;
-ihtab_create_entry(&t, 1024);
+struct iht_entry t;
+iht_create_entry(&t, 1024);
 
 // Insert
 entry e = {42, 100};
 entry *res;
-if (!ihtab_perform_entry(&t, &e, IHTAB_INSERT, &res))
+if (!iht_perform_entry(&t, &e, IHT_INSERT, &res))
   *res = e;
 
 // Replace (insert or update)
 entry e2 = {42, 200};
-ihtab_perform_entry(&t, &e2, IHTAB_REPLACE, &res);
+iht_perform_entry(&t, &e2, IHT_REPLACE, &res);
 *res = e2;  // always write -- inserts if new, overwrites if exists
 
 // Find
 entry query = {42, 0};
-if (ihtab_perform_entry(&t, &query, IHTAB_FIND, &res))
+if (iht_perform_entry(&t, &query, IHT_FIND, &res))
   printf("found: %u\n", res->value);
 
 // Delete
-ihtab_perform_entry(&t, &query, IHTAB_DELETE, &res);
+iht_perform_entry(&t, &query, IHT_DELETE, &res);
 
 // Query
-printf("count=%lu size=%lu\n", ihtab_els_count_entry(&t), ihtab_size_entry(&t));
+printf("count=%lu size=%lu\n", iht_els_count_entry(&t), iht_size_entry(&t));
 
-// Iterate -- ihtab_iter_entry is a lightweight iterator
+// Iterate -- iht_iter_entry is a lightweight iterator
 // (just an element index and a cached pointer)
-struct ihtab_iter_entry it = ihtab_iter_begin_entry(&t);
-while (ihtab_iter_valid_entry(&it)) {
+struct iht_iter_entry it = iht_iter_begin_entry(&t);
+while (iht_iter_valid_entry(&it)) {
   printf("%u -> %u\n", it.ptr->key, it.ptr->value);
-  ihtab_iter_next_entry(&t, &it);
+  iht_iter_next_entry(&t, &it);
 }
 
-ihtab_destroy_entry(&t);
+iht_destroy_entry(&t);
 ```
 
-For ixhtab, replace `ihtab` / `IHTAB_*` / `DEFINE_IHTAB` with `ixhtab` / `IXHTAB_*` / `DEFINE_IXHTAB`.  Note: ixhtab provides `ixhtab_els_count` but has no `size` equivalent.  The `ixhtab_iter` iterator carries a bin index in addition to the element index and pointer, but is still lightweight.
+For ixhtab, replace `iht` / `IHT_*` / `DEFINE_IHT` with `ixht` / `IXHT_*` / `DEFINE_IXHT`.  Note: ixhtab provides `ixht_els_count` but has no `size` equivalent.  The `ixht_iter` iterator carries a bin index in addition to the element index and pointer, but is still lightweight.
 
 ## Benchmarking
 

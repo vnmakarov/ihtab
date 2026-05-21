@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
-#include "ihtab.h"
-#include "ixhtab.h"
+#include "iht.h"
+#include "ixht.h"
 #include "vmum.h"
 #include "bench_c.h"
 
@@ -34,12 +34,12 @@ static inline ci_lv make_ci_lv (uint64_t key, int i) {
 
 /* ===== Instantiate tables ===== */
 
-DEFINE_IHTAB  (ci_int, ci_int_h, ci_int_e)
-DEFINE_IXHTAB (ci_int, ci_int_h, ci_int_e)
-DEFINE_IHTAB  (ci_str, ci_str_h, ci_str_e)
-DEFINE_IXHTAB (ci_str, ci_str_h, ci_str_e)
-DEFINE_IHTAB  (ci_lv,  ci_lv_h,  ci_lv_e)
-DEFINE_IXHTAB (ci_lv,  ci_lv_h,  ci_lv_e)
+DEFINE_IHT  (ci_int, ci_int_h, ci_int_e)
+DEFINE_IXHT (ci_int, ci_int_h, ci_int_e)
+DEFINE_IHT  (ci_str, ci_str_h, ci_str_e)
+DEFINE_IXHT (ci_str, ci_str_h, ci_str_e)
+DEFINE_IHT  (ci_lv,  ci_lv_h,  ci_lv_e)
+DEFINE_IXHT (ci_lv,  ci_lv_h,  ci_lv_e)
 
 /* ===== Wrapper generator macros ===== */
 
