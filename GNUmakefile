@@ -11,7 +11,11 @@ SRC     = benchmarks/bench.cpp
 BENCH_C = benchmarks/bench_c.c
 BENCH_O = benchmarks/bench_c.o
 
-.PHONY: bench install uninstall clean
+TEST_CXXFLAGS = -I. -std=c++20 -O3 -Wall -Wpedantic
+TEST_CFLAGS   = -I. -std=c11 -O3 -Wall
+TEST_BINS     = tests/test tests/test_c
+
+.PHONY: bench test install uninstall clean
 
 bench: $(BENCH)
 	benchmarks/run_comparison.sh
@@ -21,6 +25,15 @@ $(BENCH_O): $(BENCH_C) benchmarks/bench_c.h ihtab.h ixhtab.h vmum.h
 
 $(BENCH): $(SRC) $(BENCH_O) ihtab.hpp ixhtab.hpp vmum.h benchmarks/bench_c.h
 	$(CXX) $(CXXFLAGS) $(SRC) $(BENCH_O) -o $(BENCH)
+
+test: $(TEST_BINS)
+	@for t in $(TEST_BINS); do echo "=== $$t ==="; ./$$t || exit 1; done
+
+tests/test: tests/test.cpp ihtab.hpp ixhtab.hpp
+	$(CXX) $(TEST_CXXFLAGS) $< -o $@
+
+tests/test_c: tests/test_c.c ihtab.h ixhtab.h
+	$(CC) $(TEST_CFLAGS) $< -o $@
 
 install:
 	install -d $(DESTDIR)$(INCLUDEDIR)
@@ -34,4 +47,4 @@ uninstall:
 	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.h   $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
 
 clean:
-	$(RM) $(BENCH) $(BENCH_O)
+	$(RM) $(BENCH) $(BENCH_O) $(TEST_BINS)
