@@ -21,23 +21,23 @@ struct MyEq {
   }
 };
 
-using IhtabTable = ihtab<Entry, MyHash, MyEq>;
-using IxhtabTable = ixhtab<Entry, MyHash, MyEq>;
+using IhtabTable = iht::ihtab<Entry, MyHash, MyEq>;
+using IxhtabTable = ixht::ixhtab<Entry, MyHash, MyEq>;
 
-#define TEST_HTAB(name, Table, ACT)                                        \
+#define TEST_HTAB(name, Table, NS)                                         \
                                                                            \
 static void test_##name##_insert_find() {                                  \
   printf("  " #name " insert/find...");                                    \
   Table t;                                                                 \
   Entry e{42, 100}, *res;                                                  \
-  assert(!t.perform(e, ACT##_INSERT, &res));                               \
+  assert(!t.perform(e, NS::INSERT, &res));                                 \
   *res = e;                                                                \
   assert(t.els_count() == 1);                                              \
   Entry q{42, 0};                                                          \
-  assert(t.perform(q, ACT##_FIND, &res));                                  \
+  assert(t.perform(q, NS::FIND, &res));                                    \
   assert(res->value == 100);                                               \
   Entry q2{99, 0};                                                         \
-  assert(!t.perform(q2, ACT##_FIND, &res));                                \
+  assert(!t.perform(q2, NS::FIND, &res));                                  \
   printf(" ok\n");                                                         \
 }                                                                          \
                                                                            \
@@ -45,14 +45,14 @@ static void test_##name##_replace() {                                      \
   printf("  " #name " replace...");                                        \
   Table t;                                                                 \
   Entry e{42, 100}, *res;                                                  \
-  assert(!t.perform(e, ACT##_REPLACE, &res));                              \
+  assert(!t.perform(e, NS::REPLACE, &res));                                \
   *res = e;                                                                \
   assert(t.els_count() == 1);                                              \
   Entry e2{42, 200};                                                       \
-  assert(t.perform(e2, ACT##_REPLACE, &res));                              \
+  assert(t.perform(e2, NS::REPLACE, &res));                                \
   *res = e2;                                                               \
   Entry q{42, 0};                                                          \
-  assert(t.perform(q, ACT##_FIND, &res));                                  \
+  assert(t.perform(q, NS::FIND, &res));                                    \
   assert(res->value == 200);                                               \
   printf(" ok\n");                                                         \
 }                                                                          \
@@ -61,13 +61,13 @@ static void test_##name##_delete() {                                       \
   printf("  " #name " delete...");                                         \
   Table t;                                                                 \
   Entry e{42, 100}, *res;                                                  \
-  assert(!t.perform(e, ACT##_INSERT, &res));                               \
+  assert(!t.perform(e, NS::INSERT, &res));                                 \
   *res = e;                                                                \
   assert(t.els_count() == 1);                                              \
   Entry q{42, 0};                                                          \
-  assert(t.perform(q, ACT##_DELETE, &res));                                \
+  assert(t.perform(q, NS::DELETE, &res));                                  \
   assert(t.els_count() == 0);                                              \
-  assert(!t.perform(q, ACT##_FIND, &res));                                 \
+  assert(!t.perform(q, NS::FIND, &res));                                   \
   printf(" ok\n");                                                         \
 }                                                                          \
                                                                            \
@@ -75,10 +75,10 @@ static void test_##name##_duplicate() {                                    \
   printf("  " #name " duplicate insert...");                               \
   Table t;                                                                 \
   Entry e{42, 100}, *res;                                                  \
-  assert(!t.perform(e, ACT##_INSERT, &res));                               \
+  assert(!t.perform(e, NS::INSERT, &res));                                 \
   *res = e;                                                                \
   Entry e2{42, 200};                                                       \
-  assert(t.perform(e2, ACT##_INSERT, &res));                               \
+  assert(t.perform(e2, NS::INSERT, &res));                                 \
   assert(res->value == 100);                                               \
   printf(" ok\n");                                                         \
 }                                                                          \
@@ -89,7 +89,7 @@ static void test_##name##_iterate() {                                      \
   Table t;                                                                 \
   for (int i = 0; i < N; i++) {                                            \
     Entry e{(uint32_t)i, (uint32_t)(i * 10)}, *res;                        \
-    assert(!t.perform(e, ACT##_INSERT, &res));                             \
+    assert(!t.perform(e, NS::INSERT, &res));                               \
     *res = e;                                                              \
   }                                                                        \
   assert((int)t.els_count() == N);                                         \
@@ -123,27 +123,27 @@ static void test_##name##_large() {                                        \
   Entry *res;                                                              \
   for (int i = 0; i < N; i++) {                                            \
     Entry e{(uint32_t)i, (uint32_t)(i * 7)};                               \
-    assert(!t.perform(e, ACT##_INSERT, &res));                             \
+    assert(!t.perform(e, NS::INSERT, &res));                               \
     *res = e;                                                              \
   }                                                                        \
   assert((int)t.els_count() == N);                                         \
   for (int i = 0; i < N; i++) {                                            \
     Entry q{(uint32_t)i, 0};                                               \
-    assert(t.perform(q, ACT##_FIND, &res));                                \
+    assert(t.perform(q, NS::FIND, &res));                                  \
     assert(res->value == (uint32_t)(i * 7));                               \
   }                                                                        \
   for (int i = 0; i < N / 2; i++) {                                        \
     Entry q{(uint32_t)i, 0};                                               \
-    assert(t.perform(q, ACT##_DELETE, &res));                              \
+    assert(t.perform(q, NS::DELETE, &res));                                \
   }                                                                        \
   assert((int)t.els_count() == N - N / 2);                                 \
   for (int i = 0; i < N / 2; i++) {                                        \
     Entry q{(uint32_t)i, 0};                                               \
-    assert(!t.perform(q, ACT##_FIND, &res));                               \
+    assert(!t.perform(q, NS::FIND, &res));                                 \
   }                                                                        \
   for (int i = N / 2; i < N; i++) {                                        \
     Entry q{(uint32_t)i, 0};                                               \
-    assert(t.perform(q, ACT##_FIND, &res));                                \
+    assert(t.perform(q, NS::FIND, &res));                                  \
     assert(res->value == (uint32_t)(i * 7));                               \
   }                                                                        \
   printf(" ok\n");                                                         \
@@ -159,8 +159,8 @@ static void test_##name##_all() {                                          \
   test_##name##_large();                                                   \
 }
 
-TEST_HTAB(ihtab, IhtabTable, IHTAB)
-TEST_HTAB(ixhtab, IxhtabTable, IXHTAB)
+TEST_HTAB(ihtab, IhtabTable, iht)
+TEST_HTAB(ixhtab, IxhtabTable, ixht)
 
 int main() {
   test_ihtab_all();

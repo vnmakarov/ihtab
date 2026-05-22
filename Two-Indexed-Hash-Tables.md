@@ -60,12 +60,13 @@ Empty detection is even cheaper: since empty slots have bit 7 set (0x80) and val
 
 ## Usage
 
-Both are header-only.  C++ versions use templates (`ihtab.hpp`, `ixhtab.hpp`); C versions use a macro to stamp out typed definitions (`iht.h`, `ixht.h`).
+Both are header-only.  C++ versions use templates (`ihtab.hpp`, `ixhtab.hpp`) inside namespaces `iht` and `ixht` respectively; C versions use a macro to stamp out typed definitions (`ihtab.h`, `ixhtab.h`).
 
 ### C++
 
 ```cpp
 #include "ihtab.hpp"
+using namespace iht;
 
 struct Entry { uint32_t key; uint32_t value; };
 
@@ -88,21 +89,21 @@ Table t(1024);  // min capacity hint; default is 8
 // Insert
 Entry e{42, 100};
 Entry *res;
-if (!t.perform(e, IHTAB_INSERT, &res))
+if (!t.perform(e, INSERT, &res))
   *res = e;  // write element on new insert
 
 // Replace (insert or update)
 Entry e2{42, 200};
-t.perform(e2, IHTAB_REPLACE, &res);
+t.perform(e2, REPLACE, &res);
 *res = e2;  // always write -- inserts if new, overwrites if exists
 
 // Find
 Entry query{42, 0};
-if (t.perform(query, IHTAB_FIND, &res))
+if (t.perform(query, FIND, &res))
   printf("found: %u\n", res->value);
 
 // Delete
-t.perform(query, IHTAB_DELETE, &res);
+t.perform(query, DELETE, &res);
 
 // Query
 printf("count=%lu size=%lu\n", t.els_count(), t.size());
@@ -115,7 +116,7 @@ for (auto &e : t)
 for (auto it = t.begin(); it != t.end(); ++it)
   printf("%u -> %u\n", it->key, it->value);
 
-// Lightweight ihtab_iter -- no table pointer, just an element
+// Lightweight iter -- no table pointer, just an element
 // index and a cached element pointer
 auto it = t.iter_begin();
 while (Table::iter_valid(it)) {
@@ -126,21 +127,24 @@ while (Table::iter_valid(it)) {
 // t destroyed automatically at end of scope
 ```
 
-ixhtab has the same interface -- just swap the prefix:
+ixhtab has the same interface in namespace `ixht` -- just swap the prefix:
 
 ```cpp
+#include "ixhtab.hpp"
+using namespace ixht;
+
 using Table = ixhtab<Entry, MyHash, MyEq>;
-// IXHTAB_INSERT, IXHTAB_REPLACE, IXHTAB_FIND, IXHTAB_DELETE
+// INSERT, REPLACE, FIND, DELETE
 ```
 
-ixhtab also provides a lightweight `ixhtab_iter` (bin index, element index, and cached pointer) with the same `iter_begin`/`iter_valid`/`iter_next` interface.
+ixhtab also provides a lightweight `iter` (bin index, element index, and cached pointer) with the same `iter_begin`/`iter_valid`/`iter_next` interface.
 
 ### C
 
 Include the header and invoke `DEFINE_IHT(El, Hash, Eq)` to generate type-specific structs and functions with an `_El` suffix.  `Hash` and `Eq` are ordinary function names.
 
 ```c
-#include "iht.h"
+#include "ihtab.h"
 
 typedef struct { uint32_t key; uint32_t value; } entry;
 

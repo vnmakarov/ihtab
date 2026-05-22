@@ -3,8 +3,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "iht.h"
-#include "ixht.h"
+#include "ihtab.h"
+#include "ixhtab.h"
 
 typedef struct { uint32_t key; uint32_t value; } entry;
 
@@ -19,10 +19,10 @@ static inline bool entry_eq(entry a, entry b) {
 DEFINE_IHT(entry, entry_hash, entry_eq)
 DEFINE_IXHT(entry, entry_hash, entry_eq)
 
-#define TEST_HTAB(pfx, PFX)                                                \
+#define TEST_HTAB(pfx, PFX, name)                                                \
                                                                            \
 static void pfx##_test_insert_find(void) {                                 \
-  printf("  " #pfx " insert/find...");                                     \
+  printf("  " #name " insert/find...");                                     \
   struct pfx##_entry t;                                                    \
   pfx##_create_entry(&t, 8);                                               \
   entry e = {42, 100}, *res;                                               \
@@ -39,7 +39,7 @@ static void pfx##_test_insert_find(void) {                                 \
 }                                                                          \
                                                                            \
 static void pfx##_test_replace(void) {                                     \
-  printf("  " #pfx " replace...");                                         \
+  printf("  " #name " replace...");                                         \
   struct pfx##_entry t;                                                    \
   pfx##_create_entry(&t, 8);                                               \
   entry e = {42, 100}, *res;                                               \
@@ -57,7 +57,7 @@ static void pfx##_test_replace(void) {                                     \
 }                                                                          \
                                                                            \
 static void pfx##_test_delete(void) {                                      \
-  printf("  " #pfx " delete...");                                          \
+  printf("  " #name " delete...");                                          \
   struct pfx##_entry t;                                                    \
   pfx##_create_entry(&t, 8);                                               \
   entry e = {42, 100}, *res;                                               \
@@ -73,7 +73,7 @@ static void pfx##_test_delete(void) {                                      \
 }                                                                          \
                                                                            \
 static void pfx##_test_duplicate(void) {                                   \
-  printf("  " #pfx " duplicate insert...");                                \
+  printf("  " #name " duplicate insert...");                                \
   struct pfx##_entry t;                                                    \
   pfx##_create_entry(&t, 8);                                               \
   entry e = {42, 100}, *res;                                               \
@@ -87,7 +87,7 @@ static void pfx##_test_duplicate(void) {                                   \
 }                                                                          \
                                                                            \
 static void pfx##_test_iterate(void) {                                     \
-  printf("  " #pfx " iterate...");                                         \
+  printf("  " #name " iterate...");                                         \
   const int N = 100;                                                       \
   struct pfx##_entry t;                                                    \
   pfx##_create_entry(&t, 8);                                               \
@@ -114,7 +114,7 @@ static void pfx##_test_iterate(void) {                                     \
 }                                                                          \
                                                                            \
 static void pfx##_test_large(void) {                                       \
-  printf("  " #pfx " large table...");                                     \
+  printf("  " #name " large table...");                                     \
   const int N = 50000;                                                     \
   struct pfx##_entry t;                                                    \
   pfx##_create_entry(&t, 8);                                               \
@@ -149,7 +149,7 @@ static void pfx##_test_large(void) {                                       \
 }                                                                          \
                                                                            \
 static void pfx##_test_all(void) {                                         \
-  printf(#pfx ":\n");                                                      \
+  printf(#name ":\n");                                                      \
   pfx##_test_insert_find();                                                \
   pfx##_test_replace();                                                    \
   pfx##_test_delete();                                                     \
@@ -158,8 +158,8 @@ static void pfx##_test_all(void) {                                         \
   pfx##_test_large();                                                      \
 }
 
-TEST_HTAB(iht, IHT)
-TEST_HTAB(ixht, IXHT)
+TEST_HTAB(iht, IHT, ihtab)
+TEST_HTAB(ixht, IXHT, ixhtab)
 
 int main() {
   iht_test_all();

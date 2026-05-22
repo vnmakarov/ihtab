@@ -2,7 +2,7 @@
 
 Two open-addressing hash tables with separate element storage, available
 as C++20 templates (`ihtab.hpp`, `ixhtab.hpp`) and C11 macro-generated
-headers (`iht.h`, `ixht.h`).  No build system required to use them.
+headers (`ihtab.h`, `ixhtab.h`).  No build system required to use them.
 
 ## Design
 
@@ -39,9 +39,10 @@ and value, plus a hash functor and equality functor, then instantiate.
 
 ```cpp
 #include "ihtab.hpp"
+using namespace iht;
 
 struct Entry { uint64_t key; int value; };
-struct Hash  { ihtab_hash_t operator()(const Entry &e) const { return e.key * 11400714819323198485ULL; } };
+struct Hash  { hash_t operator()(const Entry &e) const { return e.key * 11400714819323198485ULL; } };
 struct Eq    { bool operator()(const Entry &a, const Entry &b) const { return a.key == b.key; } };
 
 using Tab = ihtab<Entry, Hash, Eq>;
@@ -51,23 +52,24 @@ Tab t(64);  // min_size=64; default is 8
 // Insert
 Entry e{42, 100};
 Entry *slot;
-if (!t.perform(e, IHTAB_INSERT, &slot))
+if (!t.perform(e, INSERT, &slot))
     *slot = e;           // new element — write it
 
 // Lookup
 Entry key{42, 0};
-if (t.perform(key, IHTAB_FIND, &slot))
+if (t.perform(key, FIND, &slot))
     printf("%d\n", slot->value);
 
 // Delete
-t.perform(key, IHTAB_DELETE, &slot);
+t.perform(key, DELETE, &slot);
 
 // Iterate
 for (auto &e : t)
     printf("%llu -> %d\n", e.key, e.value);
 ```
 
-Replace `ihtab` / `IHTAB_*` with `ixhtab` / `IXHTAB_*` to use ixhtab.
+For ixhtab, use `#include "ixhtab.hpp"` with `using namespace ixht;` and
+replace `ihtab` with `ixhtab`.
 
 `perform` returns `true` when the element was found (FIND/DELETE) or already
 existed (INSERT/REPLACE), `false` on a new insertion.  On `false` from
@@ -80,7 +82,7 @@ generate type-specific structs and functions with an `_El` suffix.
 `Hash` and `Eq` are ordinary function names.
 
 ```c
-#include "iht.h"
+#include "ihtab.h"
 
 typedef struct { uint64_t key; int value; } entry;
 
@@ -158,27 +160,27 @@ Geometric mean on AMD 9900x across all benchmarks (lower is better):
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   6.8 |  1.000x |
-| ixhtab         |   6.1 |  0.889x |
-| ihtab          |   4.3 |  0.632x |
-| ixht           |   6.0 |  0.881x |
-| iht            |   3.9 |  0.575x |
+| C++ ixhtab     |   6.1 |  0.889x |
+| C++ ihtab      |   4.3 |  0.632x |
+| C ixhtab       |   6.0 |  0.881x |
+| C ihtab        |   3.9 |  0.575x |
 
 Geometric mean on Intel 270K+ across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   8.5 |  1.000x |
-| ixhtab         |   7.3 |  0.863x |
-| ihtab          |   5.1 |  0.603x |
-| ixht           |   7.2 |  0.843x |
-| iht            |   4.9 |  0.576x |
+| C++ ixhtab     |   7.3 |  0.863x |
+| C++ ihtab      |   5.1 |  0.603x |
+| C ixhtab       |   7.2 |  0.843x |
+| C ihtab        |   4.9 |  0.576x |
 
 Geometric mean on Apple M4 across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
 | absl           |   5.9 |  1.000x |
-| ixhtab         |   6.4 |  1.080x |
-| ihtab          |   3.7 |  0.631x |
-| ixht           |   5.3 |  0.889x |
-| iht            |   3.6 |  0.601x |
+| C++ ixhtab     |   6.4 |  1.080x |
+| C++ ihtab      |   3.7 |  0.631x |
+| C ixhtab       |   5.3 |  0.889x |
+| C ihtab        |   3.6 |  0.601x |

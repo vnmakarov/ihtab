@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
-#include "iht.h"
-#include "ixht.h"
+#include "ihtab.h"
+#include "ixhtab.h"
 #include "vmum.h"
 #include "bench_c.h"
 
@@ -244,9 +244,9 @@ void cpfx##_lv_free (void *h) {                                      \
 
 /* ===== Expand all wrappers ===== */
 
-GEN_INT (c_ihtab,  ihtab,  ci_int, IHTAB)
-GEN_INT (c_ixhtab, ixhtab, ci_int, IXHTAB)
-GEN_STR (c_ihtab,  ihtab,  ci_str, IHTAB)
-GEN_STR (c_ixhtab, ixhtab, ci_str, IXHTAB)
-GEN_LV  (c_ihtab,  ihtab,  ci_lv,  IHTAB)
-GEN_LV  (c_ixhtab, ixhtab, ci_lv,  IXHTAB)
+GEN_INT (c_ihtab,  iht,  ci_int, IHT)
+GEN_INT (c_ixhtab, ixht, ci_int, IXHT)
+GEN_STR (c_ihtab,  iht,  ci_str, IHT)
+GEN_STR (c_ixhtab, ixht, ci_str, IXHT)
+GEN_LV  (c_ihtab,  iht,  ci_lv,  IHT)
+GEN_LV  (c_ixhtab, ixht, ci_lv,  IXHT)

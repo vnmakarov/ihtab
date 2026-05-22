@@ -11,101 +11,108 @@
 #define IHTAB_FORCE_INLINE __attribute__ ((always_inline)) inline
 #endif
 
-typedef uint32_t ihtab_ind_t;
-typedef unsigned long ihtab_size_t;
-typedef size_t ihtab_hash_t;
+#if !defined(IHTAB_USE_SWAR) \
+  && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
+#include <immintrin.h>
+#elif !defined(IHTAB_USE_SWAR) && (defined(__aarch64__) || defined(_M_ARM64))
+#include <arm_neon.h>
+#endif
 
-static constexpr unsigned int IHTAB_GROUP_SIZE = 8;
-static constexpr unsigned char IHTAB_EMPTY_H7 = 0x80;
-static constexpr unsigned char IHTAB_DELETED_H7 = 0xfe;
-static constexpr ihtab_ind_t IHTAB_ENTRY_DELETED = ~(ihtab_ind_t) 0;
-static constexpr unsigned int IHTAB_LF_FACTOR = 1;
-static constexpr unsigned int IHTAB_LF_DIVISOR = 2;
+namespace iht {
+
+typedef uint32_t ind_t;
+typedef unsigned long entry_ind_t;
+typedef size_t hash_t;
+
+static constexpr unsigned int GROUP_SIZE = 8;
+static constexpr unsigned char EMPTY_H7 = 0x80;
+static constexpr unsigned char DELETED_H7 = 0xfe;
+static constexpr ind_t ENTRY_DELETED = ~(ind_t) 0;
+static constexpr unsigned int LF_FACTOR = 1;
+static constexpr unsigned int LF_DIVISOR = 2;
 
 #if !defined(IHTAB_USE_SWAR) \
   && (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
 
-#include <immintrin.h>
 static const bool mask_scale = false;
-typedef __m128i ihtab_group_t;
-static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+typedef __m128i group_t;
+static IHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) {
   return _mm_cvtsi64_si128 (*(const long long *) p);
 }
-static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) {
   __m128i h7_vec = _mm_set1_epi8 ((char) h7_val);
   return (uint64_t) _mm_movemask_epi8 (_mm_cmpeq_epi8 (g, h7_vec)) & 0xff;
 }
-static const __m128i IHTAB_EMPTY_MASK = _mm_set1_epi8 ((char) 0x80);
-static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
-  return (uint64_t) _mm_movemask_epi8 (_mm_and_si128 (g, IHTAB_EMPTY_MASK)) & 0xff;
+static const __m128i EMPTY_MASK = _mm_set1_epi8 ((char) 0x80);
+static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) {
+  return (uint64_t) _mm_movemask_epi8 (_mm_and_si128 (g, EMPTY_MASK)) & 0xff;
 }
 
 #elif !defined(IHTAB_USE_SWAR) && (defined(__aarch64__) || defined(_M_ARM64))
 
-#include <arm_neon.h>
 static const bool mask_scale = false;
-typedef uint64_t ihtab_group_t;
-static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
-  return *(const ihtab_group_t *) p;
+typedef uint64_t group_t;
+static IHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) {
+  return *(const group_t *) p;
 }
-static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
+static IHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) {
   uint8x8_t group = vcreate_u8 (g);
   uint8x8_t match_eq = vceq_u8 (group, vdup_n_u8 (h7_val));
   static const uint8x8_t bit_mask = {1, 2, 4, 8, 16, 32, 64, 128};
   return (uint64_t) vaddv_u8 (vand_u8 (match_eq, bit_mask));
 }
-static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) {
-  return ihtab_match_mask (g, IHTAB_EMPTY_H7);
+static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) {
+  return match_mask (g, EMPTY_H7);
 }
 
 #else
 
 static const bool mask_scale = true;
-static constexpr uint64_t IHTAB_SWAR_LSB = 0x0101010101010101ULL;
-static constexpr uint64_t IHTAB_SWAR_MSB = 0x8080808080808080ULL;
-typedef uint64_t ihtab_group_t;
-static IHTAB_FORCE_INLINE ihtab_group_t ihtab_group_load (const unsigned char *p) {
+static constexpr uint64_t SWAR_LSB = 0x0101010101010101ULL;
+static constexpr uint64_t SWAR_MSB = 0x8080808080808080ULL;
+typedef uint64_t group_t;
+static IHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) {
   return *(const uint64_t *) p;
 }
-static IHTAB_FORCE_INLINE uint64_t ihtab_match_mask (ihtab_group_t g, unsigned char h7_val) {
-  uint64_t cmp = g ^ (IHTAB_SWAR_LSB * h7_val);
-  return (cmp - IHTAB_SWAR_LSB) & ~cmp & IHTAB_SWAR_MSB;
+static IHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) {
+  uint64_t cmp = g ^ (SWAR_LSB * h7_val);
+  return (cmp - SWAR_LSB) & ~cmp & SWAR_MSB;
 }
-static IHTAB_FORCE_INLINE uint64_t ihtab_match_empty (ihtab_group_t g) { return g & IHTAB_SWAR_MSB; }
+static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) { return g & SWAR_MSB; }
 
 #endif
 
-enum ihtab_action { IHTAB_FIND, IHTAB_DELETE, IHTAB_INSERT, IHTAB_REPLACE };
+enum action { FIND, DELETE, INSERT, REPLACE };
 
 template <typename El>
-struct hbin_ihtab_t {
-  ihtab_size_t els_bound;
+struct hbin_t {
+  entry_ind_t els_bound;
   El *els;
   char *deleted;
   unsigned char *h7;
-  ihtab_ind_t *entries;
-  ihtab_size_t groups_mask;
+  ind_t *entries;
+  entry_ind_t groups_mask;
 };
 
 template <typename El, typename Hash, typename Eq>
 class ihtab {
-  ihtab_size_t els_num;
-  hbin_ihtab_t<El> bin;
+  entry_ind_t els_num;
+  hbin_t<El> bin;
 
  public:
-  ihtab (ihtab_size_t min_size = 8) {
-    ihtab_size_t entries_size = IHTAB_GROUP_SIZE;
-    while (entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR < min_size) entries_size *= 2;
-    ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;
+  ihtab (entry_ind_t min_size = 8) {
+    entry_ind_t entries_size = GROUP_SIZE;
+    while (entries_size * LF_FACTOR / LF_DIVISOR < min_size) entries_size *= 2;
+    entry_ind_t els_size = entries_size * LF_FACTOR / LF_DIVISOR;
     els_num = 0;
     bin.els_bound = 0;
     bin.els = (El *) std::malloc (els_size * sizeof (El));
-    ihtab_size_t del_bytes = (els_size + 7) / 8;
+    entry_ind_t del_bytes = (els_size + 7) / 8;
     bin.deleted = (char *) std::calloc (del_bytes, 1);
-    bin.h7 = (unsigned char *) std::aligned_alloc (IHTAB_GROUP_SIZE, entries_size);
-    std::memset (bin.h7, IHTAB_EMPTY_H7, entries_size);
-    bin.entries = (ihtab_ind_t *) std::malloc (entries_size * sizeof (ihtab_ind_t));
-    bin.groups_mask = entries_size / IHTAB_GROUP_SIZE - 1;
+    bin.h7 = (unsigned char *) std::aligned_alloc (GROUP_SIZE, entries_size);
+    std::memset (bin.h7, EMPTY_H7, entries_size);
+    bin.entries = (ind_t *) std::malloc (entries_size * sizeof (ind_t));
+    bin.groups_mask = entries_size / GROUP_SIZE - 1;
   }
 
   ~ihtab () {
@@ -116,59 +123,59 @@ class ihtab {
   }
 
  private:
-  static void destroy_bin (hbin_ihtab_t<El> &b) {
+  static void destroy_bin (hbin_t<El> &b) {
     std::free (b.els);
     std::free (b.deleted);
     std::free (b.h7);
     std::free (b.entries);
   }
 
-  IHTAB_FORCE_INLINE bool do_1 (hbin_ihtab_t<El> &b, El &el, enum ihtab_action action, El **res) {
+  IHTAB_FORCE_INLINE bool do_1 (hbin_t<El> &b, El &el, enum action action, El **res) {
     Hash hash_fn;
     Eq eq_fn;
-    ihtab_hash_t hash = hash_fn (el);
-    unsigned char h7_val = (hash >> (sizeof (size_t) * 8 - 7)) & 0x7f;
-    ihtab_size_t group_ind = (hash / IHTAB_GROUP_SIZE) & b.groups_mask;
-    ihtab_size_t first_deleted_slot = ~(ihtab_size_t) 0;
+    hash_t hash = hash_fn (el);
+    unsigned char h7_val = (hash >> (sizeof (hash_t) * 8 - 7)) & 0x7f;
+    entry_ind_t group_ind = (hash / GROUP_SIZE) & b.groups_mask;
+    entry_ind_t first_deleted_slot = ~(entry_ind_t) 0;
 
     for (;;) {
-      unsigned char *group_h7 = b.h7 + group_ind * IHTAB_GROUP_SIZE;
-      ihtab_group_t group = ihtab_group_load (group_h7);
-      uint64_t match_mask = ihtab_match_mask (group, h7_val);
-      while (match_mask) {
-        unsigned int bit = __builtin_ctzll (match_mask);
+      unsigned char *group_h7 = b.h7 + group_ind * GROUP_SIZE;
+      group_t group = group_load (group_h7);
+      uint64_t mmask = match_mask (group, h7_val);
+      while (mmask) {
+        unsigned int bit = __builtin_ctzll (mmask);
         if (mask_scale) bit /= 8;
-        ihtab_size_t slot = group_ind * IHTAB_GROUP_SIZE + bit;
-        ihtab_ind_t el_ind = b.entries[slot];
-        if (el_ind == IHTAB_ENTRY_DELETED) {
-          if (first_deleted_slot == ~(ihtab_size_t) 0) first_deleted_slot = slot;
+        entry_ind_t slot = group_ind * GROUP_SIZE + bit;
+        ind_t el_ind = b.entries[slot];
+        if (el_ind == ENTRY_DELETED) {
+          if (first_deleted_slot == ~(entry_ind_t) 0) first_deleted_slot = slot;
         } else if (eq_fn (b.els[el_ind], el)) {
-          if (action != IHTAB_DELETE) {
+          if (action != DELETE) {
             *res = &b.els[el_ind];
           } else {
             els_num--;
             b.deleted[el_ind / 8] |= 1 << (el_ind % 8);
-            b.entries[slot] = IHTAB_ENTRY_DELETED;
+            b.entries[slot] = ENTRY_DELETED;
           }
           return true;
         }
-        match_mask &= match_mask - 1;
+        mmask &= mmask - 1;
       }
 
-      uint64_t empty_mask = ihtab_match_empty (group);
+      uint64_t empty_mask = match_empty (group);
       if (empty_mask) {
-        if (action >= IHTAB_INSERT) {
+        if (action >= INSERT) {
           els_num++;
-          ihtab_size_t slot;
-          if (first_deleted_slot != ~(ihtab_size_t) 0) {
+          entry_ind_t slot;
+          if (first_deleted_slot != ~(entry_ind_t) 0) {
             slot = first_deleted_slot;
           } else {
             unsigned int bit = __builtin_ctzll (empty_mask);
             if (mask_scale) bit /= 8;
-            slot = group_ind * IHTAB_GROUP_SIZE + bit;
+            slot = group_ind * GROUP_SIZE + bit;
           }
           b.h7[slot] = h7_val;
-          b.entries[slot] = (ihtab_ind_t) b.els_bound;
+          b.entries[slot] = (ind_t) b.els_bound;
           *res = &b.els[b.els_bound];
           b.els_bound++;
         }
@@ -180,27 +187,27 @@ class ihtab {
   }
 
   void rebuild () {
-    ihtab_size_t entries_size = (bin.groups_mask + 1) * IHTAB_GROUP_SIZE;
-    ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;
-    if (2 * IHTAB_LF_DIVISOR * els_num >= IHTAB_LF_FACTOR * entries_size) {
+    entry_ind_t entries_size = (bin.groups_mask + 1) * GROUP_SIZE;
+    entry_ind_t els_size = entries_size * LF_FACTOR / LF_DIVISOR;
+    if (2 * LF_DIVISOR * els_num >= LF_FACTOR * entries_size) {
       entries_size *= 2;
-      els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;
+      els_size = entries_size * LF_FACTOR / LF_DIVISOR;
     }
-    hbin_ihtab_t<El> resize_bin;
+    hbin_t<El> resize_bin;
     resize_bin.els = (El *) std::malloc (els_size * sizeof (El));
-    ihtab_size_t del_bytes = (els_size + 7) / 8;
+    entry_ind_t del_bytes = (els_size + 7) / 8;
     resize_bin.deleted = (char *) std::calloc (del_bytes, 1);
-    resize_bin.h7 = (unsigned char *) std::aligned_alloc (IHTAB_GROUP_SIZE, entries_size);
-    std::memset (resize_bin.h7, IHTAB_EMPTY_H7, entries_size);
-    resize_bin.entries = (ihtab_ind_t *) std::malloc (entries_size * sizeof (ihtab_ind_t));
-    resize_bin.groups_mask = entries_size / IHTAB_GROUP_SIZE - 1;
+    resize_bin.h7 = (unsigned char *) std::aligned_alloc (GROUP_SIZE, entries_size);
+    std::memset (resize_bin.h7, EMPTY_H7, entries_size);
+    resize_bin.entries = (ind_t *) std::malloc (entries_size * sizeof (ind_t));
+    resize_bin.groups_mask = entries_size / GROUP_SIZE - 1;
     resize_bin.els_bound = 0;
-    ihtab_size_t bound = bin.els_bound;
-    ihtab_size_t saved_els_num = els_num;
-    for (ihtab_size_t i = 0; i < bound; i++)
+    entry_ind_t bound = bin.els_bound;
+    entry_ind_t saved_els_num = els_num;
+    for (entry_ind_t i = 0; i < bound; i++)
       if (!(bin.deleted[i / 8] & (1 << (i % 8)))) {
         El *r;
-        do_1 (resize_bin, bin.els[i], IHTAB_INSERT, &r);
+        do_1 (resize_bin, bin.els[i], INSERT, &r);
         *r = bin.els[i];
       }
     els_num = saved_els_num;
@@ -209,27 +216,27 @@ class ihtab {
   }
 
  public:
-  IHTAB_FORCE_INLINE bool perform (El &el, enum ihtab_action action, El **res) {
-    if (action >= IHTAB_INSERT) {
-      ihtab_size_t entries_size = (bin.groups_mask + 1) * IHTAB_GROUP_SIZE;
-      ihtab_size_t els_size = entries_size * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR - 1;
+  IHTAB_FORCE_INLINE bool perform (El &el, enum action action, El **res) {
+    if (action >= INSERT) {
+      entry_ind_t entries_size = (bin.groups_mask + 1) * GROUP_SIZE;
+      entry_ind_t els_size = entries_size * LF_FACTOR / LF_DIVISOR - 1;
       if (__builtin_expect (bin.els_bound >= els_size, 0)) rebuild ();
     }
     return do_1 (bin, el, action, res);
   }
 
-  ihtab_size_t els_count () const { return els_num; }
+  entry_ind_t els_count () const { return els_num; }
 
-  ihtab_size_t size () const {
-    return (bin.groups_mask + 1) * IHTAB_GROUP_SIZE * IHTAB_LF_FACTOR / IHTAB_LF_DIVISOR;
+  entry_ind_t size () const {
+    return (bin.groups_mask + 1) * GROUP_SIZE * LF_FACTOR / LF_DIVISOR;
   }
 
-  struct ihtab_iter {
-    ihtab_size_t el_idx;
+  struct iter {
+    entry_ind_t el_idx;
     El *ptr;
   };
 
-  IHTAB_FORCE_INLINE void iter_advance (ihtab_iter &it) {
+  IHTAB_FORCE_INLINE void iter_advance (iter &it) {
     while (it.el_idx < bin.els_bound) {
       if (!(bin.deleted[it.el_idx / 8] & (1 << (it.el_idx % 8)))) {
         it.ptr = &bin.els[it.el_idx];
@@ -240,17 +247,17 @@ class ihtab {
     it.ptr = nullptr;
   }
 
-  IHTAB_FORCE_INLINE ihtab_iter iter_begin () {
-    ihtab_iter it;
+  IHTAB_FORCE_INLINE iter iter_begin () {
+    iter it;
     it.el_idx = 0;
     it.ptr = nullptr;
     iter_advance (it);
     return it;
   }
 
-  static IHTAB_FORCE_INLINE bool iter_valid (ihtab_iter &it) { return it.ptr != nullptr; }
+  static IHTAB_FORCE_INLINE bool iter_valid (iter &it) { return it.ptr != nullptr; }
 
-  IHTAB_FORCE_INLINE void iter_next (ihtab_iter &it) {
+  IHTAB_FORCE_INLINE void iter_next (iter &it) {
     ++it.el_idx;
     iter_advance (it);
   }
@@ -263,7 +270,7 @@ class ihtab {
     using reference = El &;
 
     ihtab *htab;
-    ihtab_size_t el_idx;
+    entry_ind_t el_idx;
 
     IHTAB_FORCE_INLINE void advance () {
       while (el_idx < htab->bin.els_bound) {
@@ -296,5 +303,7 @@ class ihtab {
 
   IHTAB_FORCE_INLINE iterator end () { return {this, bin.els_bound}; }
 };
+
+} // namespace iht
 
 #endif /* #ifndef IHTAB_H */

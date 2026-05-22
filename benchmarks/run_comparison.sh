@@ -71,7 +71,7 @@ for row in rows:
     key = (row["Benchmark"], row["Size"])
     data[key][row["Implementation"]] = float(row["ns/op"])
 
-impls = ["absl", "ixhtab", "ihtab", "ixht", "iht"]
+impls = ["absl", "C++ ixhtab", "C++ ihtab", "C ixhtab", "C ihtab"]
 
 lines = []
 lines.append("Hash Table Comparison Report")
@@ -163,8 +163,8 @@ try:
     ni = len(impls)
     w = 0.8 / ni
     colors = {"absl": "#51a9f0",
-              "ixhtab": "#9650c8", "ihtab": "#1e64b4",
-              "ixht": "#c87ee0", "iht": "#4090e0"}
+              "C++ ixhtab": "#9650c8", "C++ ihtab": "#1e64b4",
+              "C ixhtab": "#c87ee0", "C ihtab": "#4090e0"}
 
     # Chart 1: Absolute times.
     chart_w = max(18, n * 0.9)

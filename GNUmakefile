@@ -20,7 +20,7 @@ TEST_BINS     = tests/test tests/test_c
 bench: $(BENCH)
 	benchmarks/run_comparison.sh
 
-$(BENCH_O): $(BENCH_C) benchmarks/bench_c.h iht.h ixht.h vmum.h
+$(BENCH_O): $(BENCH_C) benchmarks/bench_c.h ihtab.h ixhtab.h vmum.h
 	$(CC) $(CFLAGS) -c $(BENCH_C) -o $(BENCH_O)
 
 $(BENCH): $(SRC) $(BENCH_O) ihtab.hpp ixhtab.hpp vmum.h benchmarks/bench_c.h
@@ -32,19 +32,19 @@ test: $(TEST_BINS)
 tests/test: tests/test.cpp ihtab.hpp ixhtab.hpp
 	$(CXX) $(TEST_CXXFLAGS) $< -o $@
 
-tests/test_c: tests/test_c.c iht.h ixht.h
+tests/test_c: tests/test_c.c ihtab.h ixhtab.h
 	$(CC) $(TEST_CFLAGS) $< -o $@
 
 install:
 	install -d $(DESTDIR)$(INCLUDEDIR)
 	install -m 644 ihtab.hpp  $(DESTDIR)$(INCLUDEDIR)/ihtab.hpp
 	install -m 644 ixhtab.hpp $(DESTDIR)$(INCLUDEDIR)/ixhtab.hpp
-	install -m 644 iht.h      $(DESTDIR)$(INCLUDEDIR)/iht.h
-	install -m 644 ixht.h     $(DESTDIR)$(INCLUDEDIR)/ixht.h
+	install -m 644 ihtab.h      $(DESTDIR)$(INCLUDEDIR)/ihtab.h
+	install -m 644 ixhtab.h     $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
 
 uninstall:
 	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.hpp $(DESTDIR)$(INCLUDEDIR)/ixhtab.hpp
-	$(RM) $(DESTDIR)$(INCLUDEDIR)/iht.h     $(DESTDIR)$(INCLUDEDIR)/ixht.h
+	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.h     $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
 
 clean:
 	$(RM) $(BENCH) $(BENCH_O) $(TEST_BINS)
