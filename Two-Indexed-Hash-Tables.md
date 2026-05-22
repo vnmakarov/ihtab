@@ -203,7 +203,7 @@ I wrote benchmarks and a script to compare the performance of abseil's `flat_has
 
 As you can see, ihtab works better than abseil for practically all benchmarks.  The bigger the table, the better ihtab's results -- which most probably shows that using compact h7 tags and indices with a low load factor improves cache locality compared to direct open addressing.  The ixhtab results show that extendible hash tables decrease throughput considerably, although they reduce worst-case delays caused by full-table rebuilds.
 
-People could critique my choice of benchmarks -- it always happens. Benchmarks are evil, but the absence of benchmarks is more evil. Therefore I also include results from a hash table benchmark suite written by another person: [c_cpp_hash_tables_benchmark](https://github.com/JacksonAllan/c_cpp_hash_tables_benchmark). I made a [copy of the repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark) and added ihtab and ixhtab for benchmarking.  Here are the results:
+People could critique my choice of benchmarks -- it always happens. Benchmarks are evil, but the absence of benchmarks is more evil. Therefore I also include results from a hash table benchmark suite written by another person: [c_cpp_hash_tables_benchmark](https://github.com/JacksonAllan/c_cpp_hash_tables_benchmark). I made a [copy of the repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark) and added ihtab and ixhtab for benchmarking.  Here are the results for AMD 9900X (you can also find results for Intel 270K+ and Apple M4 in the [repo](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark)):
 
 ![performance heatmap](heatmap_perf.svg)
 
