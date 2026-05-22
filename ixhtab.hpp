@@ -57,9 +57,7 @@ static IXHTAB_FORCE_INLINE unsigned int match_empty (group_t g) {
 static const bool mask_scale = false;
 typedef uint64_t group_t;
 
-static IXHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) {
-  return *(const uint64_t *) p;
-}
+static IXHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) { return *(const uint64_t *) p; }
 
 static IXHTAB_FORCE_INLINE unsigned int match_mask (group_t g, unsigned char h7_val) {
   uint8x8_t group = vcreate_u8 (g);
@@ -68,9 +66,7 @@ static IXHTAB_FORCE_INLINE unsigned int match_mask (group_t g, unsigned char h7_
   return (unsigned int) vaddv_u8 (vand_u8 (match_eq, bit_mask));
 }
 
-static IXHTAB_FORCE_INLINE unsigned int match_empty (group_t g) {
-  return match_mask (g, EMPTY_H7);
-}
+static IXHTAB_FORCE_INLINE unsigned int match_empty (group_t g) { return match_mask (g, EMPTY_H7); }
 
 #else
 
@@ -79,9 +75,7 @@ static constexpr uint64_t SWAR_LSB = 0x0101010101010101ULL;
 static constexpr uint64_t SWAR_MSB = 0x8080808080808080ULL;
 typedef uint64_t group_t;
 
-static IXHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) {
-  return *(const uint64_t *) p;
-}
+static IXHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) { return *(const uint64_t *) p; }
 
 static IXHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) {
   uint64_t cmp = g ^ (SWAR_LSB * h7_val);
@@ -182,8 +176,7 @@ class ixhtab {
   }
 
  private:
-  IXHTAB_FORCE_INLINE bool do_1 (ebin_t<El> &bin, hash_t hash, El &el,
-                                 enum action action, El **res) {
+  IXHTAB_FORCE_INLINE bool do_1 (ebin_t<El> &bin, hash_t hash, El &el, enum action action, El **res) {
     Eq eq_fn;
     unsigned char h7_val = (hash >> (sizeof (hash_t) * 8 - 7)) & 0x7f;
     unsigned int group_ind = (unsigned int) (hash / GROUP_SIZE) & bin.groups_mask;
@@ -431,6 +424,6 @@ class ixhtab {
   IXHTAB_FORCE_INLINE iterator end () { return {this, bins_num, 0}; }
 };
 
-} // namespace ixht
+}  // namespace ixht
 
 #endif /* #ifndef IXHTAB_H */

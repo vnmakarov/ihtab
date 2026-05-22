@@ -52,18 +52,14 @@ static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) {
 
 static const bool mask_scale = false;
 typedef uint64_t group_t;
-static IHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) {
-  return *(const group_t *) p;
-}
+static IHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) { return *(const group_t *) p; }
 static IHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) {
   uint8x8_t group = vcreate_u8 (g);
   uint8x8_t match_eq = vceq_u8 (group, vdup_n_u8 (h7_val));
   static const uint8x8_t bit_mask = {1, 2, 4, 8, 16, 32, 64, 128};
   return (uint64_t) vaddv_u8 (vand_u8 (match_eq, bit_mask));
 }
-static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) {
-  return match_mask (g, EMPTY_H7);
-}
+static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) { return match_mask (g, EMPTY_H7); }
 
 #else
 
@@ -71,9 +67,7 @@ static const bool mask_scale = true;
 static constexpr uint64_t SWAR_LSB = 0x0101010101010101ULL;
 static constexpr uint64_t SWAR_MSB = 0x8080808080808080ULL;
 typedef uint64_t group_t;
-static IHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) {
-  return *(const uint64_t *) p;
-}
+static IHTAB_FORCE_INLINE group_t group_load (const unsigned char *p) { return *(const uint64_t *) p; }
 static IHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) {
   uint64_t cmp = g ^ (SWAR_LSB * h7_val);
   return (cmp - SWAR_LSB) & ~cmp & SWAR_MSB;
@@ -227,9 +221,7 @@ class ihtab {
 
   entry_ind_t els_count () const { return els_num; }
 
-  entry_ind_t size () const {
-    return (bin.groups_mask + 1) * GROUP_SIZE * LF_FACTOR / LF_DIVISOR;
-  }
+  entry_ind_t size () const { return (bin.groups_mask + 1) * GROUP_SIZE * LF_FACTOR / LF_DIVISOR; }
 
   struct iter {
     entry_ind_t el_idx;
@@ -304,6 +296,6 @@ class ihtab {
   IHTAB_FORCE_INLINE iterator end () { return {this, bin.els_bound}; }
 };
 
-} // namespace iht
+}  // namespace iht
 
 #endif /* #ifndef IHTAB_H */

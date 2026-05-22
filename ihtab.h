@@ -80,7 +80,7 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
 
 /* ===== Generic macro ===== */
 
-#define DEFINE_IHT(El, Hash, Eq)                                                                          \
+#define DEFINE_IHT(El, Hash, Eq)                                                                            \
                                                                                                             \
   struct hbin_iht_##El {                                                                                    \
     iht_size_t els_bound;                                                                                   \

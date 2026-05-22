@@ -94,7 +94,7 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
 
 /* ===== Generic macro ===== */
 
-#define DEFINE_IXHT(El, Hash, Eq)                                                                          \
+#define DEFINE_IXHT(El, Hash, Eq)                                                                            \
                                                                                                              \
   struct ebin_ixht_##El {                                                                                    \
     ixht_depth_t depth;                                                                                      \
