@@ -162,9 +162,9 @@ try:
     x = np.arange(n)
     ni = len(impls)
     w = 0.8 / ni
-    colors = {"absl": "#51a9f0",
-              "C++ ixhtab": "#9650c8", "C++ ihtab": "#1e64b4",
-              "C ixhtab": "#c87ee0", "C ihtab": "#4090e0"}
+    colors = {"absl": "#999999",
+              "C++ ixhtab": "#e69f00", "C++ ihtab": "#0072b2",
+              "C ixhtab": "#cc79a7", "C ihtab": "#009e73"}
 
     # Chart 1: Absolute times.
     chart_w = max(18, n * 0.9)
@@ -205,7 +205,14 @@ try:
     fig, ax = plt.subplots(figsize=(chart_w2, chart_w2 / 2))
     for j, im in enumerate(cmp_impls):
         offset = (j - (nc - 1) / 2) * wc
-        ax.bar(xx + offset, pct[im], wc, label=im, color=colors[im], alpha=0.8)
+        bars = ax.bar(xx + offset, pct[im], wc, label=im, color=colors[im], alpha=0.8)
+        for bar, val in zip(bars, pct[im]):
+            if val == 0: continue
+            h = bar.get_height()
+            va = "bottom" if h >= 0 else "top"
+            dy = 0.5 if h >= 0 else -0.5
+            ax.text(bar.get_x() + bar.get_width() / 2, h + dy,
+                    f"{val:+.0f}%", ha="center", va=va, fontsize=5, rotation=45)
 
     ax.axhline(y=0, color="black", linestyle="-", linewidth=1.5)
     ax.axvline(x=nn - 1.5, color="gray", linestyle="--", linewidth=0.8)

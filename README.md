@@ -159,11 +159,11 @@ Geometric mean on AMD 9900x across all benchmarks (lower is better):
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   6.8 |  1.000x |
-| C++ ixhtab     |   6.1 |  0.889x |
-| C++ ihtab      |   4.3 |  0.632x |
-| C ixhtab       |   6.0 |  0.881x |
-| C ihtab        |   3.9 |  0.575x |
+| absl           |   7.0 |  1.000x |
+| C++ ixhtab     |   6.4 |  0.911x |
+| C++ ihtab      |   4.4 |  0.628x |
+| C ixhtab       |   6.3 |  0.897x |
+| C ihtab        |   4.1 |  0.587x |
 
 Geometric mean on Intel 270K+ across all benchmarks:
 

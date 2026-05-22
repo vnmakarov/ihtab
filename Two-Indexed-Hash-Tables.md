@@ -60,13 +60,10 @@ Empty detection is even cheaper: since empty slots have bit 7 set (0x80) and val
 
 ## Usage
 
-Both are header-only.  C++ versions use templates (`ihtab.hpp`, `ixhtab.hpp`) inside namespaces `iht` and `ixht` respectively; C versions use a macro to stamp out typed definitions (`ihtab.h`, `ixhtab.h`).
-
-### C++
+Both are header-only C++ templates:
 
 ```cpp
-#include "ihtab.hpp"
-using namespace iht;
+#include "ihtab.h"
 
 struct Entry { uint32_t key; uint32_t value; };
 
@@ -82,132 +79,55 @@ struct MyEq {
   }
 };
 
-using Table = ihtab<Entry, MyHash, MyEq>;
+using Table = ihtab_t<Entry, MyHash, MyEq>;
 
-Table t(1024);  // min capacity hint; default is 8
+Table t;
+Table::create(&t, 1024);  // min capacity hint
 
 // Insert
 Entry e{42, 100};
 Entry *res;
-if (!t.perform(e, INSERT, &res))
+if (!Table::do_(&t, e, IHTAB_INSERT, &res))
   *res = e;  // write element on new insert
-
-// Replace (insert or update)
-Entry e2{42, 200};
-t.perform(e2, REPLACE, &res);
-*res = e2;  // always write -- inserts if new, overwrites if exists
 
 // Find
 Entry query{42, 0};
-if (t.perform(query, FIND, &res))
+if (Table::do_(&t, query, IHTAB_FIND, &res))
   printf("found: %u\n", res->value);
 
 // Delete
-t.perform(query, DELETE, &res);
+Table::do_(&t, query, IHTAB_DELETE, &res);
 
-// Query
-printf("count=%lu size=%lu\n", t.els_count(), t.size());
-
-// Iterate (range-based for, uses C++ forward iterator)
-for (auto &e : t)
-  printf("%u -> %u\n", e.key, e.value);
-
-// Explicit C++ forward iterator
-for (auto it = t.begin(); it != t.end(); ++it)
-  printf("%u -> %u\n", it->key, it->value);
-
-// Lightweight iter -- no table pointer, just an element
-// index and a cached element pointer
-auto it = t.iter_begin();
+// Iterate
+auto it = Table::iter_begin(&t);
 while (Table::iter_valid(it)) {
   printf("%u -> %u\n", it.ptr->key, it.ptr->value);
-  t.iter_next(it);
+  Table::iter_next(&t, it);
 }
 
-// t destroyed automatically at end of scope
+Table::destroy(&t);
 ```
 
-ixhtab has the same interface in namespace `ixht` -- just swap the prefix:
+ixhtab has the same interface -- just swap the prefix:
 
 ```cpp
-#include "ixhtab.hpp"
-using namespace ixht;
-
-using Table = ixhtab<Entry, MyHash, MyEq>;
-// INSERT, REPLACE, FIND, DELETE
+using Table = ixhtab_t<Entry, MyHash, MyEq>;
+// IXHTAB_INSERT, IXHTAB_FIND, IXHTAB_DELETE
 ```
-
-ixhtab also provides a lightweight `iter` (bin index, element index, and cached pointer) with the same `iter_begin`/`iter_valid`/`iter_next` interface.
-
-### C
-
-Include the header and invoke `DEFINE_IHT(El, Hash, Eq)` to generate type-specific structs and functions with an `_El` suffix.  `Hash` and `Eq` are ordinary function names.
-
-```c
-#include "ihtab.h"
-
-typedef struct { uint32_t key; uint32_t value; } entry;
-
-static inline iht_hash_t entry_hash(entry e) {
-  return e.key * 0x9E3779B97F4A7C15ULL;
-}
-static inline bool entry_eq(entry a, entry b) {
-  return a.key == b.key;
-}
-
-DEFINE_IHT(entry, entry_hash, entry_eq)
-
-struct iht_entry t;
-iht_create_entry(&t, 1024);
-
-// Insert
-entry e = {42, 100};
-entry *res;
-if (!iht_perform_entry(&t, &e, IHT_INSERT, &res))
-  *res = e;
-
-// Replace (insert or update)
-entry e2 = {42, 200};
-iht_perform_entry(&t, &e2, IHT_REPLACE, &res);
-*res = e2;  // always write -- inserts if new, overwrites if exists
-
-// Find
-entry query = {42, 0};
-if (iht_perform_entry(&t, &query, IHT_FIND, &res))
-  printf("found: %u\n", res->value);
-
-// Delete
-iht_perform_entry(&t, &query, IHT_DELETE, &res);
-
-// Query
-printf("count=%lu size=%lu\n", iht_els_count_entry(&t), iht_size_entry(&t));
-
-// Iterate -- iht_iter_entry is a lightweight iterator
-// (just an element index and a cached pointer)
-struct iht_iter_entry it = iht_iter_begin_entry(&t);
-while (iht_iter_valid_entry(&it)) {
-  printf("%u -> %u\n", it.ptr->key, it.ptr->value);
-  iht_iter_next_entry(&t, &it);
-}
-
-iht_destroy_entry(&t);
-```
-
-For ixhtab, replace `iht` / `IHT_*` / `DEFINE_IHT` with `ixht` / `IXHT_*` / `DEFINE_IXHT`.  Note: ixhtab provides `ixht_els_count` but has no `size` equivalent.  The `ixht_iter` iterator carries a bin index in addition to the element index and pointer, but is still lightweight.
 
 ## Benchmarking
 
-I wrote benchmarks and a script to compare the performance of abseil's `flat_hash_map` (a well-known direct open-addressing hash table) with ihtab and ixhtab.  All three use [vmum](https://github.com/vnmakarov/mum-hash), a high-performance, high-quality hash function.  The benchmarked tables have 100 (small), 10,000 (medium), and 1,000,000 (large) elements, with both integer and string key types as well as small and large value types.  Here are the results:
+I wrote benchmarks and a script to compare the performance of abseil's `flat_hash_map` (a well-known direct open-addressing hash table) with ihtab and ixhtab.  All three use [vmum](https://github.com/vnmakarov/mum-hash), a high-performance, high-quality hash function.  The benchmarked tables have 100 (small), 10,000 (medium), and 1,000,000 (large) elements, with both integer and string key types as well as small and large value types.  Here are the results on AMD9900X:
 
-![benchmark comparison](benchmark_results/speedup_comparison.png)
+![benchmark comparison](amd_comparison.png)
 
 As you can see, ihtab works better than abseil for practically all benchmarks.  The bigger the table, the better ihtab's results -- which most probably shows that using compact h7 tags and indices with a low load factor improves cache locality compared to direct open addressing.  The ixhtab results show that extendible hash tables decrease throughput considerably, although they reduce worst-case delays caused by full-table rebuilds.
 
-People could critique my choice of benchmarks -- it always happens. Benchmarks are evil, but the absence of benchmarks is more evil. Therefore I also include results from a hash table benchmark suite written by another person: [c_cpp_hash_tables_benchmark](https://github.com/JacksonAllan/c_cpp_hash_tables_benchmark). I made a [copy of the repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark) and added ihtab and ixhtab for benchmarking.  Here are the results for AMD 9900X (you can also find results for Intel 270K+ and Apple M4 in the [repo](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark)):
+People could critique my choice of benchmarks -- it always happens. Benchmarks are evil, but the absence of benchmarks is more evil. Therefore I also include results from a hash table benchmark suite written by another person: [c_cpp_hash_tables_benchmark](https://github.com/JacksonAllan/c_cpp_hash_tables_benchmark). I made a [copy of the repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark) and added ihtab and ixhtab for benchmarking.  Here are the results:
 
-![performance heatmap](heatmap_perf.svg)
+![performance heatmap](heatmap_perf.png)
 
-![memory heatmap](heatmap_mem.svg)
+![memory heatmap](heatmap_mem.png)
 
 ## When to use which
 
