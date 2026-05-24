@@ -6,27 +6,35 @@ In recent years, direct open-addressing hash tables with high load factors have 
 
 I've never been comfortable with the high load factors and slow iterators that come with direct open addressing.  So I took a different angle: decrease the load factor and separate the probe metadata from the elements entirely, using indices to bridge the two. Here's what came out of it.
 
-## The core idea: indexed probing
+## The core design ideas
 
-Most hash tables store key-value pairs directly in the probe array. When you're looking up a key that isn't there, you walk through occupied slots checking each one -- and at 50% load, roughly half your first probes hit an occupied slot, leading to a branch the CPU can't predict well.
+Most hash tables store key-value pairs directly in the probe array.  This design has two performance problems on modern CPUs:
 
-**ihtab** takes a different approach.  It keeps a compact array of 7-bit hash tags (one byte per slot) separate from the actual elements. When probing, you first scan the tag array using SIMD to check 8 slots at once, then only access the element storage when the tag matches. Elements live in a separate array, referenced by 32-bit indices stored alongside the tags.
+- **Branch misprediction.**  When looking up a key that isn't in the table, you walk through occupied slots checking each one.  At 50% load, roughly half your probes hit an occupied slot, making the empty/busy branch essentially a coin flip -- the worst case for branch prediction.  Each misprediction costs ~15-20 cycles on current x86.
 
-There is also a small `deleted` bitmap, one bit per element, which records which (key,val) slots have been deleted.  It is used primarily during iteration: we walk the dense element array and skip bits marked as deleted, without touching the h7 or entries arrays at all.
+- **Poor cache locality.**  Probing touches full key-value slots, which wastes cache lines when keys or values are large.  Keeping pointers to key-value pairs improves probe locality but essentially turns the table into an indexed one anyway.  Iteration is even worse: you walk every slot in the array, skipping empty ones, which is especially wasteful when the table is mostly empty or the elements are large.
 
-Deleted elements are also marked in the entries array by the value ~0, a marker commonly called a tombstone.  During a search, we skip tombstones and continue probing until we find the key or an empty slot.  An alternative would be to use a dedicated h7 tag value for tombstones, which would let us detect deletions without reading the entries array -- but that adds complexity and slows down the common case when there are no deleted elements.
+My design was focused on improving both of these.
+
+**ihtab** takes an approach different to typical direct open-addressing tables.  It separates probe metadata from element storage entirely:
+
+- A compact array of **7-bit hash tags** (one byte per slot) is probed using SIMD, checking 8 slots at once.  This replaces many unpredictable per-slot branches with a single highly-predictable group branch, largely eliminating misprediction during probing.  The 7-bit tags also reduce the probability of checking the index array to 1/128 when the part of the hash used for addressing results in probing the same slot.
+
+- The actual elements live in a **separate dense array**, referenced by 32-bit indices stored alongside the tags.  Probing only touches the small tag and index arrays, so cache lines aren't wasted on key-value data until a tag match confirms the slot is worth examining.
+
+- A small **deleted bitmap** (one bit per element) records which element slots have been deleted.  Iteration walks the dense element array and checks the bitmap -- no scanning through empty slots, no touching the tag or index arrays at all.
+
+Deleted elements are also marked in the index array with a tombstone value (~0).  During a search, tombstones are skipped and probing continues until the key is found or an empty slot is reached.  An alternative would be to reserve a dedicated tag value for tombstones, detecting deletions without reading the index array -- but that adds complexity and slows down the common case when there are no deleted elements.
 
 ![ihtab memory layout](ihtab_layout.png)
 
-When keys or values are large enough, a full ihtab actually uses less memory than a full direct open-addressing table.  In direct tables, every slot -- including empty ones -- pays the full `sizeof(key) + sizeof(value)` cost.  In ihtab, empty slots only cost 1 byte (tag) + 4 bytes (index), and elements are stored densely with no wasted space.
+**Memory.**  When keys or values are large, ihtab can actually use *less* memory than a direct open-addressing table.  In direct tables, every slot -- including empty ones -- pays the full `sizeof(key) + sizeof(value)` cost.  In ihtab, empty slots cost only 1 byte (tag) + 4 bytes (index), and elements are stored densely with no wasted space.
 
-New elements are appended at the position indicated by `bound`. Insertions continue until the last slot in the (key,val) array is used.  At that point the table is rebuilt: deleted elements are compacted out of the (key,val) array, and if there is still not enough room, all arrays are doubled in size.  The h7, entries, and index data are recomputed from the surviving elements.
+**Growth.**  New elements are appended at the position indicated by `bound`.  Insertions continue until the element array is full.  At that point the table is rebuilt: deleted elements are compacted out, and if there is still not enough room, all arrays are doubled in size.  The tag, index, and bitmap data are recomputed from the surviving elements.
 
-This indirection has a nice side effect: the element array is dense and sequential, which makes iteration cache-friendly.  You just walk the element array and check a deleted bitmap -- no scanning through empty slots.
+**Load factor.**  The table runs at ~50% occupancy.  The expected probe count for random hashes when h7 is the same is about 1 + 1/2 + 1/4 + ... = 2 group probes, compared to 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load.  The index array adds memory overhead, but for large element types the total can actually be smaller since empty slots don't waste `sizeof(element)` space.
 
-The load factor math works out well too.  With entries at ~50% occupancy, the expected probe count for random hashes is about 1 + 1/2 + 1/4 + ... = 2 group probes.  Compare that to open addressing at 7/8 load where you're looking at 1 + 7/8 + 49/64 + ... = 8 probes.  The tradeoff: the index array adds memory, though for large key-value types the total can actually be smaller since empty slots don't waste `sizeof(element)` space.
-
-Both tables use linear group probing in case of collisions.  This can lead to index clustering, especially with lower-quality hash functions, but at low load factors it's a smaller problem.  On the other hand, linear probing is better for cache locality, which is critical for hash table performance.
+**Collision handling.**  Both tables use linear group probing.  This can lead to clustering with lower-quality hash functions, but at a 50% load factor the effect is small.  Linear probing also benefits cache locality, which is critical for hash table performance.
 
 ## ixhtab: when rebuild cost matters
 
