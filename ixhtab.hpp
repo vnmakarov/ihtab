@@ -410,7 +410,7 @@ class ixhtab {
       return t;
     }
     IXHTAB_FORCE_INLINE bool operator== (const iterator &o) const {
-      return bin_idx == o.bin_idx && el_idx == o.el_idx;
+      return tab == o.tab && bin_idx == o.bin_idx && el_idx == o.el_idx;
     }
     IXHTAB_FORCE_INLINE bool operator!= (const iterator &o) const { return !(*this == o); }
   };

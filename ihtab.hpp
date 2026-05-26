@@ -283,8 +283,8 @@ class ihtab {
       ++(*this);
       return t;
     }
-    IHTAB_FORCE_INLINE bool operator== (const iterator &o) const { return el_idx == o.el_idx; }
-    IHTAB_FORCE_INLINE bool operator!= (const iterator &o) const { return el_idx != o.el_idx; }
+    IHTAB_FORCE_INLINE bool operator== (const iterator &o) const { return htab == o.htab && el_idx == o.el_idx; }
+    IHTAB_FORCE_INLINE bool operator!= (const iterator &o) const { return htab != o.htab || el_idx != o.el_idx; }
   };
 
   IHTAB_FORCE_INLINE iterator begin () {
