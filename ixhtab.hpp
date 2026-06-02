@@ -27,10 +27,10 @@ typedef unsigned int ebin_ind_t;
 static constexpr unsigned int GROUP_SIZE = 8;
 static constexpr unsigned char EMPTY_H7 = 0x80;
 static constexpr unsigned char DELETED_H7 = 0xfe;
-static constexpr ind_t ENTRY_DELETED = ~(ind_t) 0;
+static constexpr ind_t INDEX_DELETED = ~(ind_t) 0;
 static constexpr unsigned int MAX_BIN_SIZE_POWER = 15;
 
-static_assert (MAX_BIN_SIZE_POWER <= 15, "bin size must fit in uint16_t entries");
+static_assert (MAX_BIN_SIZE_POWER <= 15, "bin size must fit in uint16_t indexes");
 
 enum action { FIND, DELETE, INSERT, REPLACE };
 
@@ -94,7 +94,7 @@ struct ebin_t {
   El *els;
   char *deleted;
   unsigned char *h7;
-  ind_t *entries;
+  ind_t *indexes;
   unsigned int groups_mask;
 };
 
@@ -121,11 +121,11 @@ class ixhtab {
     b.els = (El *) std::malloc (size * sizeof (El));
     unsigned int del_bytes = (size + 7) / 8;
     b.deleted = (char *) std::calloc (del_bytes, 1);
-    unsigned int entries_size = 2 * size;
-    b.h7 = (unsigned char *) std::aligned_alloc (GROUP_SIZE, entries_size);
-    std::memset (b.h7, EMPTY_H7, entries_size);
-    b.entries = (ind_t *) std::malloc (entries_size * sizeof (ind_t));
-    b.groups_mask = entries_size / GROUP_SIZE - 1;
+    unsigned int indexes_size = 2 * size;
+    b.h7 = (unsigned char *) std::aligned_alloc (GROUP_SIZE, indexes_size);
+    std::memset (b.h7, EMPTY_H7, indexes_size);
+    b.indexes = (ind_t *) std::malloc (indexes_size * sizeof (ind_t));
+    b.groups_mask = indexes_size / GROUP_SIZE - 1;
     return ind;
   }
 
@@ -133,7 +133,7 @@ class ixhtab {
     std::free (b.els);
     std::free (b.deleted);
     std::free (b.h7);
-    std::free (b.entries);
+    std::free (b.indexes);
   }
 
   static void get_params (size_t size, size_t &bins_num, size_t &bin_power2, size_t &bin_size) {
@@ -190,8 +190,8 @@ class ixhtab {
         unsigned int bit = __builtin_ctzll (mmask);
         if (mask_scale) bit /= 8;
         unsigned int slot = group_ind * GROUP_SIZE + bit;
-        ind_t el_ind = bin.entries[slot];
-        if (el_ind == ENTRY_DELETED) {
+        ind_t el_ind = bin.indexes[slot];
+        if (el_ind == INDEX_DELETED) {
           if (first_deleted_slot == ~0u) first_deleted_slot = slot;
         } else if (eq_fn (bin.els[el_ind], el)) {
           if (action != DELETE) {
@@ -199,7 +199,7 @@ class ixhtab {
           } else {
             els_num--;
             bin.deleted[el_ind / 8] |= 1 << (el_ind % 8);
-            bin.entries[slot] = ENTRY_DELETED;
+            bin.indexes[slot] = INDEX_DELETED;
           }
           return true;
         }
@@ -219,7 +219,7 @@ class ixhtab {
             slot = group_ind * GROUP_SIZE + bit;
           }
           bin.h7[slot] = h7_val;
-          bin.entries[slot] = (ind_t) bin.els_bound;
+          bin.indexes[slot] = (ind_t) bin.els_bound;
           *res = &bin.els[bin.els_bound];
           bin.els_bound++;
         }
@@ -237,8 +237,8 @@ class ixhtab {
     for (;;) {
       auto &new_bin = bins[new_ind];
       auto &bin = bins[bin_ind];
-      unsigned int entries_size = (bin.groups_mask + 1) * GROUP_SIZE;
-      std::memset (bin.h7, EMPTY_H7, entries_size);
+      unsigned int indexes_size = (bin.groups_mask + 1) * GROUP_SIZE;
+      std::memset (bin.h7, EMPTY_H7, indexes_size);
       hash_t split_mask = (hash_t) 1 << bin.depth;
       new_bin.depth = ++bin.depth;
       if (bin.depth > max_depth) {
@@ -292,12 +292,12 @@ class ixhtab {
     ebin_ind_t bin_ind = dir[dir_ind];
     auto &bin = bins[bin_ind];
     if (action >= INSERT) {
-      unsigned int entries_size = (bin.groups_mask + 1) * GROUP_SIZE;
-      unsigned int els_size = entries_size / 2;
+      unsigned int indexes_size = (bin.groups_mask + 1) * GROUP_SIZE;
+      unsigned int els_size = indexes_size / 2;
       if (bin.els_bound == els_size) {
         bool grow = false;
-        if (2 * els_num >= entries_size) {
-          entries_size *= 2;
+        if (2 * els_num >= indexes_size) {
+          indexes_size *= 2;
           els_size *= 2;
           grow = true;
         }
@@ -310,10 +310,10 @@ class ixhtab {
           unsigned int del_bytes = (els_size + 7) / 8;
           b.deleted = (char *) std::calloc (del_bytes, 1);
           b.els = (El *) std::realloc (b.els, els_size * sizeof (El));
-          b.h7 = (unsigned char *) std::realloc (b.h7, entries_size);
-          std::memset (b.h7, EMPTY_H7, entries_size);
-          b.entries = (ind_t *) std::realloc (b.entries, entries_size * sizeof (ind_t));
-          b.groups_mask = entries_size / GROUP_SIZE - 1;
+          b.h7 = (unsigned char *) std::realloc (b.h7, indexes_size);
+          std::memset (b.h7, EMPTY_H7, indexes_size);
+          b.indexes = (ind_t *) std::realloc (b.indexes, indexes_size * sizeof (ind_t));
+          b.groups_mask = indexes_size / GROUP_SIZE - 1;
           unsigned int start = b.els_start, bound = b.els_bound;
           b.els_start = b.els_bound = 0;
           unsigned int saved_els_num = els_num;

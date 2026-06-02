@@ -18,7 +18,7 @@ typedef size_t iht_hash_t;
 #define IHT_GROUP_SIZE 8
 #define IHT_EMPTY_H7 0x80
 #define IHT_DELETED_H7 0xfe
-#define IHT_ENTRY_DELETED (~(iht_ind_t) 0)
+#define IHT_INDEX_DELETED (~(iht_ind_t) 0)
 #define IHT_LF_FACTOR 1
 #define IHT_LF_DIVISOR 2
 
@@ -87,7 +87,7 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
     El *els;                                                                                                \
     char *deleted;                                                                                          \
     unsigned char *h7;                                                                                      \
-    iht_ind_t *entries;                                                                                     \
+    iht_ind_t *indexes;                                                                                     \
     iht_size_t groups_mask;                                                                                 \
   };                                                                                                        \
                                                                                                             \
@@ -105,7 +105,7 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
     free (b->els);                                                                                          \
     free (b->deleted);                                                                                      \
     free (b->h7);                                                                                           \
-    free (b->entries);                                                                                      \
+    free (b->indexes);                                                                                      \
   }                                                                                                         \
                                                                                                             \
   static IHT_FORCE_INLINE bool iht_do_1_##El (struct iht_##El *t, struct hbin_iht_##El *b, El *el,          \
@@ -122,8 +122,8 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
         unsigned int bit = __builtin_ctzll (mmask);                                                         \
         if (IHT_MASK_SCALE) bit /= 8;                                                                       \
         iht_size_t slot = group_ind * IHT_GROUP_SIZE + bit;                                                 \
-        iht_ind_t el_ind = b->entries[slot];                                                                \
-        if (el_ind == IHT_ENTRY_DELETED) {                                                                  \
+        iht_ind_t el_ind = b->indexes[slot];                                                                \
+        if (el_ind == IHT_INDEX_DELETED) {                                                                  \
           if (first_deleted_slot == ~(iht_size_t) 0) first_deleted_slot = slot;                             \
         } else if (Eq (b->els[el_ind], *el)) {                                                              \
           if (action != IHT_DELETE) {                                                                       \
@@ -131,7 +131,7 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
           } else {                                                                                          \
             t->els_num--;                                                                                   \
             b->deleted[el_ind / 8] |= 1 << (el_ind % 8);                                                    \
-            b->entries[slot] = IHT_ENTRY_DELETED;                                                           \
+            b->indexes[slot] = IHT_INDEX_DELETED;                                                           \
           }                                                                                                 \
           return true;                                                                                      \
         }                                                                                                   \
@@ -150,7 +150,7 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
             slot = group_ind * IHT_GROUP_SIZE + bit;                                                        \
           }                                                                                                 \
           b->h7[slot] = h7_val;                                                                             \
-          b->entries[slot] = (iht_ind_t) b->els_bound;                                                      \
+          b->indexes[slot] = (iht_ind_t) b->els_bound;                                                      \
           *res = &b->els[b->els_bound];                                                                     \
           b->els_bound++;                                                                                   \
         }                                                                                                   \
@@ -161,20 +161,20 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
   }                                                                                                         \
                                                                                                             \
   static inline void iht_rebuild_##El (struct iht_##El *t) {                                                \
-    iht_size_t entries_size = (t->bin.groups_mask + 1) * IHT_GROUP_SIZE;                                    \
-    iht_size_t els_size = entries_size * IHT_LF_FACTOR / IHT_LF_DIVISOR;                                    \
-    if (2 * IHT_LF_DIVISOR * t->els_num >= IHT_LF_FACTOR * entries_size) {                                  \
-      entries_size *= 2;                                                                                    \
-      els_size = entries_size * IHT_LF_FACTOR / IHT_LF_DIVISOR;                                             \
+    iht_size_t indexes_size = (t->bin.groups_mask + 1) * IHT_GROUP_SIZE;                                    \
+    iht_size_t els_size = indexes_size * IHT_LF_FACTOR / IHT_LF_DIVISOR;                                    \
+    if (2 * IHT_LF_DIVISOR * t->els_num >= IHT_LF_FACTOR * indexes_size) {                                  \
+      indexes_size *= 2;                                                                                    \
+      els_size = indexes_size * IHT_LF_FACTOR / IHT_LF_DIVISOR;                                             \
     }                                                                                                       \
     struct hbin_iht_##El rb;                                                                                \
     rb.els = (El *) malloc (els_size * sizeof (El));                                                        \
     iht_size_t del_bytes = (els_size + 7) / 8;                                                              \
     rb.deleted = (char *) calloc (del_bytes, 1);                                                            \
-    rb.h7 = (unsigned char *) aligned_alloc (IHT_GROUP_SIZE, entries_size);                                 \
-    memset (rb.h7, IHT_EMPTY_H7, entries_size);                                                             \
-    rb.entries = (iht_ind_t *) malloc (entries_size * sizeof (iht_ind_t));                                  \
-    rb.groups_mask = entries_size / IHT_GROUP_SIZE - 1;                                                     \
+    rb.h7 = (unsigned char *) aligned_alloc (IHT_GROUP_SIZE, indexes_size);                                 \
+    memset (rb.h7, IHT_EMPTY_H7, indexes_size);                                                             \
+    rb.indexes = (iht_ind_t *) malloc (indexes_size * sizeof (iht_ind_t));                                  \
+    rb.groups_mask = indexes_size / IHT_GROUP_SIZE - 1;                                                     \
     rb.els_bound = 0;                                                                                       \
     iht_size_t bound = t->bin.els_bound;                                                                    \
     iht_size_t saved = t->els_num;                                                                          \
@@ -190,18 +190,18 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
   }                                                                                                         \
                                                                                                             \
   static IHT_FORCE_INLINE void iht_create_##El (struct iht_##El *t, iht_size_t min_size) {                  \
-    iht_size_t entries_size = IHT_GROUP_SIZE;                                                               \
-    while (entries_size * IHT_LF_FACTOR / IHT_LF_DIVISOR < min_size) entries_size *= 2;                     \
-    iht_size_t els_size = entries_size * IHT_LF_FACTOR / IHT_LF_DIVISOR;                                    \
+    iht_size_t indexes_size = IHT_GROUP_SIZE;                                                               \
+    while (indexes_size * IHT_LF_FACTOR / IHT_LF_DIVISOR < min_size) indexes_size *= 2;                     \
+    iht_size_t els_size = indexes_size * IHT_LF_FACTOR / IHT_LF_DIVISOR;                                    \
     t->els_num = 0;                                                                                         \
     t->bin.els_bound = 0;                                                                                   \
     t->bin.els = (El *) malloc (els_size * sizeof (El));                                                    \
     iht_size_t del_bytes = (els_size + 7) / 8;                                                              \
     t->bin.deleted = (char *) calloc (del_bytes, 1);                                                        \
-    t->bin.h7 = (unsigned char *) aligned_alloc (IHT_GROUP_SIZE, entries_size);                             \
-    memset (t->bin.h7, IHT_EMPTY_H7, entries_size);                                                         \
-    t->bin.entries = (iht_ind_t *) malloc (entries_size * sizeof (iht_ind_t));                              \
-    t->bin.groups_mask = entries_size / IHT_GROUP_SIZE - 1;                                                 \
+    t->bin.h7 = (unsigned char *) aligned_alloc (IHT_GROUP_SIZE, indexes_size);                             \
+    memset (t->bin.h7, IHT_EMPTY_H7, indexes_size);                                                         \
+    t->bin.indexes = (iht_ind_t *) malloc (indexes_size * sizeof (iht_ind_t));                              \
+    t->bin.groups_mask = indexes_size / IHT_GROUP_SIZE - 1;                                                 \
   }                                                                                                         \
                                                                                                             \
   static IHT_FORCE_INLINE void iht_destroy_##El (struct iht_##El *t) { iht_destroy_bin_##El (&t->bin); }    \
@@ -209,8 +209,8 @@ static IHT_FORCE_INLINE uint64_t iht_match_empty (iht_group_t g) { return g & IH
   static IHT_FORCE_INLINE bool iht_perform_##El (struct iht_##El *t, El *el, enum iht_action action,        \
                                                  El **res) {                                                \
     if (action >= IHT_INSERT) {                                                                             \
-      iht_size_t entries_size = (t->bin.groups_mask + 1) * IHT_GROUP_SIZE;                                  \
-      iht_size_t els_size = entries_size * IHT_LF_FACTOR / IHT_LF_DIVISOR - 1;                              \
+      iht_size_t indexes_size = (t->bin.groups_mask + 1) * IHT_GROUP_SIZE;                                  \
+      iht_size_t els_size = indexes_size * IHT_LF_FACTOR / IHT_LF_DIVISOR - 1;                              \
       if (__builtin_expect (t->bin.els_bound >= els_size, 0)) iht_rebuild_##El (t);                         \
     }                                                                                                       \
     return iht_do_1_##El (t, &t->bin, el, action, res);                                                     \
