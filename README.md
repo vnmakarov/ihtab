@@ -25,12 +25,12 @@ array with a deleted-bit check — no empty-slot gaps.
 
 ### ixhtab
 
-- Directory of bins, each bin is an ihtab with 16-bit indices (max 2¹⁵
+- Directory of bins, each bin is an ihtab with 16-bit indices (max 2^15
   elements per bin).
 - Only the full bin is split on overflow; the rest of the table is
   untouched.
 - Trades a directory indirection for bounded rebuild latency; suits large
-  tables or latency-sensitive workloads.
+  tables with latency-sensitive workloads.
 
 ## C++ Usage
 
