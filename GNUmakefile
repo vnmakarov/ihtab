@@ -3,8 +3,9 @@ INCLUDEDIR = $(PREFIX)/include
 
 CXX      ?= g++
 CC       ?= gcc
-CXXFLAGS  = -I. -Ibenchmarks -std=c++20 -O3 -DNDEBUG -Wall -Wpedantic
-CFLAGS    = -I. -Ibenchmarks -std=c11 -O3 -DNDEBUG -Wall
+ARCH_FLAGS := $(if $(filter x86_64,$(shell uname -m)),-mavx2)
+CXXFLAGS  = -I. -Ibenchmarks -std=c++20 -O3 $(ARCH_FLAGS) -DNDEBUG -Wall -Wpedantic
+CFLAGS    = -I. -Ibenchmarks -std=c11 -O3 $(ARCH_FLAGS) -DNDEBUG -Wall
 
 BENCH   = benchmarks/bench
 SRC     = benchmarks/bench.cpp

@@ -28,7 +28,11 @@ echo ""
 # Phase 1: Compile
 if [[ ! -f bench ]] || [[ bench.cpp -nt bench ]] || [[ ../ihtab.hpp -nt bench ]] || [[ ../ixhtab.hpp -nt bench ]]; then
   echo "Compiling benchmark..."
-  g++ -I.. -std=c++20 -O3 -DNDEBUG -Wall -Wpedantic bench.cpp -o bench
+  ARCH_FLAGS=""
+  if [[ "$(uname -m)" == "x86_64" ]]; then
+    ARCH_FLAGS="-mavx2"
+  fi
+  g++ -I.. -I. -std=c++20 -O3 $ARCH_FLAGS -DNDEBUG -w -fpermissive bench.cpp bench_c.c -o bench
   echo "Compilation done."
 else
   echo "Using existing bench binary."

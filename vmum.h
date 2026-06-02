@@ -88,7 +88,7 @@ static uint64_t _vmum_unroll_factors[] = {
   0x1a970df0a79d09baull,
 };
 
-static const uint64_t _vmum_zero[] = {0ull, 0ull, 0ull, 0ll};
+static const uint64_t _vmum_zero[] = {0ull, 0ull, 0ull, 0ull};
 static uint64_t _vmum_factors[] = {
   0x0c3ec9639d3a203full, 0x898368b5fb060422ull, 0xfe3c08767c1e5068ull, 0x4535ac3cb182d3caull,
   0xba6ba8dcc8a2d978ull, 0x9f1221df37b27ca1ull, 0x57b1b40817cde05eull, 0xadb5c6075e5dd1c3ull,
@@ -133,7 +133,6 @@ static _VMUM_INLINE uint64_t _vmum (uint64_t v, uint64_t p) {
   uint64_t rm_0 = hv * lp;
   uint64_t rm_1 = hp * lv;
   uint64_t rl = lv * lp;
-  return rh + rl + rm_0 + rm_1;
   uint64_t t, carry = 0;
 
   /* We could ignore a carry bit here if we did not care about the same hash
@@ -220,16 +219,16 @@ static _VMUM_INLINE uint64_t _vmum_plus (uint64_t a, uint64_t b) {
 #if defined(__AVX2__)
 typedef long long __attribute__ ((vector_size (32), aligned (1))) _vmum_block_t;
 typedef int __attribute__ ((vector_size (32), aligned (1))) _vmum_v8si;
+typedef int __attribute__ ((vector_size (32), aligned (1))) _vmum_v8di;
 static _VMUM_INLINE _vmum_block_t _vmum_block (_vmum_block_t v, _vmum_block_t p) {
   _vmum_block_t hv = v >> 32, hp = p >> 32;
-  _vmum_block_t r
-    = (_vmum_block_t) (__builtin_ia32_pmuludq256 ((_vmum_v8si) v, (_vmum_v8si) p)
-                       + __builtin_ia32_pmuludq256 ((_vmum_v8si) hv, (_vmum_v8si) hp));
+  _vmum_block_t r = (_vmum_block_t) (__builtin_ia32_pmuludq256 ((_vmum_v8si) v, (_vmum_v8si) p)
+                                     + __builtin_ia32_pmuludq256 ((_vmum_v8si) hv, (_vmum_v8si) hp));
   return r;
 }
 static _VMUM_INLINE _vmum_block_t _vmum_nonzero (_vmum_block_t v) {
   _vmum_block_t r
-    = (_vmum_block_t) __builtin_ia32_pcmpeqd256 ((_vmum_v8si) v, *(_vmum_v8si *) _vmum_zero);
+    = (_vmum_block_t) __builtin_ia32_pcmpeqq256 ((_vmum_block_t) v, *(_vmum_block_t *) _vmum_zero);
   return v | r;
 }
 static _VMUM_INLINE void _vmum_update_block (_vmum_block_t *s, const _vmum_block_t *v,
@@ -325,14 +324,10 @@ static _VMUM_INLINE uint64_t _vmum_val (uint64_t v, uint64_t p) {
 static _VMUM_INLINE void _vmum_update_block (_vmum_block_t *s, const _vmum_block_t *v,
                                              const _vmum_block_t *p) {
   const _vmum_block_t *v2 = &v[1], *p2 = &p[1];
-  s->v[0] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[0]), p->v[0]),
-                        _vmum_xor (_vmum_le (v2->v[0]), p2->v[0]));
-  s->v[1] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[1]), p->v[1]),
-                        _vmum_xor (_vmum_le (v2->v[1]), p2->v[1]));
-  s->v[2] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[2]), p->v[2]),
-                        _vmum_xor (_vmum_le (v2->v[2]), p2->v[2]));
-  s->v[3] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[3]), p->v[3]),
-                        _vmum_xor (_vmum_le (v2->v[3]), p2->v[3]));
+  s->v[0] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[0]), p->v[0]), _vmum_xor (_vmum_le (v2->v[0]), p2->v[0]));
+  s->v[1] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[1]), p->v[1]), _vmum_xor (_vmum_le (v2->v[1]), p2->v[1]));
+  s->v[2] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[2]), p->v[2]), _vmum_xor (_vmum_le (v2->v[2]), p2->v[2]));
+  s->v[3] ^= _vmum_val (_vmum_xor (_vmum_le (v->v[3]), p->v[3]), _vmum_xor (_vmum_le (v2->v[3]), p2->v[3]));
 }
 static _VMUM_INLINE void _vmum_factor_block (_vmum_block_t *s, const _vmum_block_t *p) {
   s->v[0] = _vmum_val (s->v[0], p->v[0]);
@@ -340,7 +335,7 @@ static _VMUM_INLINE void _vmum_factor_block (_vmum_block_t *s, const _vmum_block
   s->v[2] = _vmum_val (s->v[2], p->v[2]);
   s->v[3] = _vmum_val (s->v[3], p->v[3]);
 }
-static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = (_vmum_block_t) {0, 0, 0, 0}; }
+static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = (_vmum_block_t) {{0, 0, 0, 0}}; }
 static _VMUM_INLINE uint64_t _vmum_fold_block (_vmum_block_t *b) {
   return b->v[0] ^ b->v[1] ^ b->v[2] ^ b->v[3];
 }
@@ -374,8 +369,7 @@ static _VMUM_INLINE uint64_t
     do {
       static_assert (_VMUM_UNROLL_BLOCK_FACTOR <= sizeof (_vmum_factors) / sizeof (uint64_t));
       for (i = 0; i < _VMUM_UNROLL_BLOCK_FACTOR; i += 2)
-        _vmum_update_block (&block_state, &((_vmum_block_t *) str)[i],
-                            &((_vmum_block_t *) _vmum_factors)[i]);
+        _vmum_update_block (&block_state, &((_vmum_block_t *) str)[i], &((_vmum_block_t *) _vmum_factors)[i]);
       len -= _VMUM_UNROLL_BLOCK_FACTOR * sizeof (_vmum_block_t);
       str += _VMUM_UNROLL_BLOCK_FACTOR * sizeof (_vmum_block_t);
       /* We will use the same factor numbers on the next iterations --
@@ -400,7 +394,6 @@ static _VMUM_INLINE uint64_t
                     _vmum_plus (_vmum_le (((uint64_t *) str)[i + 1]), _vmum_factors[i + 1]));
   len -= n * sizeof (uint64_t);
   str += i * sizeof (uint64_t);
-  uint64_t p;
   switch (len) {
   case 15:
     w = _vmum_plus (_vmum_le (*(uint64_t *) str), _vmum_factors[i]);
@@ -469,9 +462,9 @@ static _VMUM_INLINE uint64_t _vmum_final (uint64_t h) {
 }
 
 #ifndef _VMUM_UNALIGNED_ACCESS
-#if defined(__x86_64__) || defined(__i386__) || defined(__PPC64__) || defined(__s390__) \
-  || defined(__m32c__) || defined(cris) || defined(__CR16__) || defined(__vax__)        \
-  || defined(__m68k__) || defined(__aarch64__) || defined(_M_AMD64) || defined(_M_IX86)
+#if defined(__x86_64__) || defined(__i386__) || defined(__PPC64__) || defined(__s390__) || defined(__m32c__) \
+  || defined(cris) || defined(__CR16__) || defined(__vax__) || defined(__m68k__) || defined(__aarch64__)     \
+  || defined(_M_AMD64) || defined(_M_IX86)
 #define _VMUM_UNALIGNED_ACCESS 1
 #else
 #define _VMUM_UNALIGNED_ACCESS 0
@@ -537,8 +530,7 @@ static _VMUM_INLINE void vmum_hash_randomize (uint64_t seed) {
   _vmum_tail_factor = _vmum_next_factor ();
   for (i = 0; i < sizeof (_vmum_unroll_factors) / sizeof (uint64_t); i++)
     _vmum_unroll_factors[i] = _vmum_next_factor ();
-  for (i = 0; i < sizeof (_vmum_factors) / sizeof (uint64_t); i++)
-    _vmum_factors[i] = _vmum_next_factor ();
+  for (i = 0; i < sizeof (_vmum_factors) / sizeof (uint64_t); i++) _vmum_factors[i] = _vmum_next_factor ();
 }
 
 /* Start hashing data with SEED. Return the state. */
