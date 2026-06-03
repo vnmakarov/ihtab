@@ -22,7 +22,7 @@ typedef unsigned int ebin_ixht_ind_t;
 #define IXHT_INDEX_DELETED ((ixht_ind_t) ~(unsigned) 0)
 #define IXHT_MAX_BIN_SIZE_POWER 15
 
-enum ixht_action { IXHT_FIND, IXHT_DELETE, IXHT_INSERT, IXHT_REPLACE };
+enum ixht_action { IXHT_FIND, IXHT_DELETE, IXHT_INSERT };
 
 /* ===== SIMD / SWAR platform selection ===== */
 

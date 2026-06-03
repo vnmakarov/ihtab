@@ -72,7 +72,7 @@ For ixhtab, use `#include "ixhtab.hpp"` with `using namespace ixht;` and
 replace `ihtab` with `ixhtab`.
 
 `perform` returns `true` when the element was found (FIND/DELETE) or already
-existed (INSERT/REPLACE), `false` on a new insertion.  On `false` from
+existed (INSERT), `false` on a new insertion.  On `false` from
 INSERT, `*slot` points to uninitialised memory — you must write the element.
 
 ## C Usage

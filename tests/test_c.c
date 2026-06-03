@@ -42,11 +42,11 @@ DEFINE_IXHT (entry, entry_hash, entry_eq)
     struct pfx##_entry t;                                         \
     pfx##_create_entry (&t, 8);                                   \
     entry e = {42, 100}, *res;                                    \
-    assert (!pfx##_perform_entry (&t, &e, PFX##_REPLACE, &res));  \
+    assert (!pfx##_perform_entry (&t, &e, PFX##_INSERT, &res));  \
     *res = e;                                                     \
     assert (pfx##_els_count_entry (&t) == 1);                     \
     entry e2 = {42, 200};                                         \
-    assert (pfx##_perform_entry (&t, &e2, PFX##_REPLACE, &res));  \
+    assert (pfx##_perform_entry (&t, &e2, PFX##_INSERT, &res));  \
     *res = e2;                                                    \
     entry q = {42, 0};                                            \
     assert (pfx##_perform_entry (&t, &q, PFX##_FIND, &res));      \

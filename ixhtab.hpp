@@ -32,7 +32,7 @@ static constexpr unsigned int MAX_BIN_SIZE_POWER = 15;
 
 static_assert (MAX_BIN_SIZE_POWER <= 15, "bin size must fit in uint16_t indexes");
 
-enum action { FIND, DELETE, INSERT, REPLACE };
+enum action { FIND, DELETE, INSERT };
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 

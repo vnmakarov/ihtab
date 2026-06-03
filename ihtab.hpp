@@ -76,7 +76,7 @@ static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) { return g & SWAR_MSB
 
 #endif
 
-enum action { FIND, DELETE, INSERT, REPLACE };
+enum action { FIND, DELETE, INSERT };
 
 template <typename El>
 struct hbin_t {

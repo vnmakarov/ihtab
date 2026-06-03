@@ -44,11 +44,11 @@ using IxhtabTable = ixht::ixhtab<Entry, MyHash, MyEq>;
     printf ("  " #name " replace...");                  \
     Table t;                                            \
     Entry e{42, 100}, *res;                             \
-    assert (!t.perform (e, NS::REPLACE, &res));         \
+    assert (!t.perform (e, NS::INSERT, &res));         \
     *res = e;                                           \
     assert (t.els_count () == 1);                       \
     Entry e2{42, 200};                                  \
-    assert (t.perform (e2, NS::REPLACE, &res));         \
+    assert (t.perform (e2, NS::INSERT, &res));         \
     *res = e2;                                          \
     Entry q{42, 0};                                     \
     assert (t.perform (q, NS::FIND, &res));             \

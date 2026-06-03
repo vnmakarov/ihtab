@@ -22,7 +22,7 @@ typedef size_t iht_hash_t;
 #define IHT_LF_FACTOR 1
 #define IHT_LF_DIVISOR 2
 
-enum iht_action { IHT_FIND, IHT_DELETE, IHT_INSERT, IHT_REPLACE };
+enum iht_action { IHT_FIND, IHT_DELETE, IHT_INSERT };
 
 /* ===== SIMD / SWAR platform selection ===== */
 

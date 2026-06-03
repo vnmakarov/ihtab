@@ -242,7 +242,6 @@ static _VMUM_INLINE void _vmum_update_block (_vmum_block_t *s, const _vmum_block
 static _VMUM_INLINE void _vmum_factor_block (_vmum_block_t *s, const _vmum_block_t *p) {
   *s = _vmum_block (*s, *p);
 }
-static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = (_vmum_block_t) {0, 0, 0, 0}; }
 static _VMUM_INLINE uint64_t _vmum_fold_block (const _vmum_block_t *b) {
   return (*b)[0] ^ (*b)[1] ^ (*b)[2] ^ (*b)[3];
 }
@@ -275,7 +274,6 @@ static _VMUM_INLINE void _vmum_factor_block (_vmum_block_t *s, const _vmum_block
   s->v[0] = _vmum_val (s->v[0], p->v[0]);
   s->v[1] = _vmum_val (s->v[1], p->v[1]);
 }
-static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = (_vmum_block_t) {0, 0, 0, 0}; }
 static _VMUM_INLINE uint64_t _vmum_fold_block (_vmum_block_t *b) {
   return b->v[0][0] ^ b->v[0][1] ^ b->v[1][0] ^ b->v[1][1];
 }
@@ -289,7 +287,6 @@ static _VMUM_INLINE _vmum_v2di _vmum_val (_vmum_v2di v, _vmum_v2di p) {
   typedef unsigned int __attribute__ ((vector_size (16))) v4si;
   return (_vmum_v2di) (vec_mule ((v4si) v, (v4si) p) + vec_mulo ((v4si) v, (v4si) p));
 }
-static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = (_vmum_block_t) {0, 0, 0, 0}; }
 static _VMUM_INLINE _vmum_v2di _vmum_nonzero (_vmum_v2di v) {
   __vector __bool long mask = vec_cmpne (v, (_vmum_v2di) {0ull, 0ull});
   _vmum_v2di r = vec_sel ((_vmum_v2di) {0xffffffffffffffffull, 0xffffffffffffffffull}, v, mask);
@@ -335,10 +332,15 @@ static _VMUM_INLINE void _vmum_factor_block (_vmum_block_t *s, const _vmum_block
   s->v[2] = _vmum_val (s->v[2], p->v[2]);
   s->v[3] = _vmum_val (s->v[3], p->v[3]);
 }
-static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = (_vmum_block_t) {{0, 0, 0, 0}}; }
 static _VMUM_INLINE uint64_t _vmum_fold_block (_vmum_block_t *b) {
   return b->v[0] ^ b->v[1] ^ b->v[2] ^ b->v[3];
 }
+#endif
+
+#ifdef __cplusplus
+static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = _vmum_block_t{0, 0, 0, 0}; }
+#else
+static _VMUM_INLINE void _vmum_zero_block (_vmum_block_t *b) { *b = (_vmum_block_t) {0, 0, 0, 0}; }
 #endif
 
 /* Macro defining how many vectors the most the 1st nested loop in
