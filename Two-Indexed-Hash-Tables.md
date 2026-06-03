@@ -2,69 +2,68 @@
 
 My career path has been mostly about programming languages and compiler implementation.  Most high-level languages have built-in hash tables, and compilers and interpreters extensively use hash tables as the most effective search data structure.  So I have a natural interest in hash tables and hashing techniques.
 
-In recent years, **direct** [open-addressing hash tables](https://en.wikipedia.org/wiki/Open_addressing) with high load factors have gained popularity, using SIMD to probe quickly even when the table is nearly full.  One well-known example of this approach is the Swiss hash table (used in [abseil](https://abseil.io/about/design/swisstables) and [Boost](https://www.boost.org/doc/libs/1_85_0/libs/unordered/doc/html/unordered.html)).
+In recent years, **direct** [open-addressing hash tables](https://en.wikipedia.org/wiki/Open_addressing) with high load factors have gained popularity. They use [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) to probe quickly even when the table is nearly full.  One well-known example of this approach is the Swiss hash table (used in [abseil](https://abseil.io/about/design/swisstables) and [Boost](https://www.boost.org/doc/libs/1_85_0/libs/unordered/doc/html/unordered.html)).
 
-I've never been comfortable with the high load factors and slow iterators that come with direct open addressing.  So I took a different angle: decrease the load factor and separate the probe metadata from the elements entirely, using indices to bridge the two. Here's what came out of it.  Spoiler: the **indexed** open-addressing table turned out to be very competitive with the best direct open-addressing tables.
+I've never been comfortable with the high load factors and slow iterators that come with direct open addressing.  So I took a different angle: decrease the load factor and separate the probe metadata from the elements entirely, using indices to bridge the two. Here's what came out of it.  Spoiler: geomean performance of the resulting **indexed** open-addressing table on different benchmarks is better than the one of the best **direct** open-addressing tables.
 
 ## The core design ideas
 
-Most hash tables store key-value pairs directly in the probe array.  This design has two performance problems on modern CPUs:
+Many hash tables store key-value pairs directly in the probe array.  This has two performance problems on modern CPUs:
 
-- **Branch misprediction.**  When looking up a key that isn't in the table, you walk through occupied element slots checking each one.  At 50% load, roughly half your probes hit an occupied element slot, making the empty/busy branch essentially a coin flip -- the worst case for branch prediction.  Each misprediction costs ~15-20 cycles on current x86.
+- **Branch misprediction.**  At 50% load, roughly half the probes hit an occupied slot when searching for a key not existing in the table.  The branch on empty/busy slot becomes a coin flip, which is the worst case for branch prediction.  Each misprediction costs ~15-20 cycles on current x86.
 
-- **Poor cache locality.**  Probing touches full key-value element slots, which wastes cache lines when keys or values are large.  Keeping pointers to key-value pairs improves probe locality but essentially turns the table into an indexed one anyway.  Iteration is even worse: you walk every element slot in the array, skipping empty ones, which is especially wasteful when the table is mostly empty or the elements are large.
+- **Poor cache locality.**  Probing touches full key-value slots.  This wastes cache lines when keys or values are large.  We could keep pointers to key-value pairs in the table instead of the pairs themselves to decrease size of unused slots but essentially this turns the table into an indexed one.  Iteration is even worse.  You walk every slot in the array, skipping empty ones.  That is especially wasteful when the table is sparse or the elements are large.
 
-My design was focused on improving both of these.
+I wanted to improve both.
 
-**ihtab** takes an approach different to typical direct open-addressing tables.  It separates probe metadata from element storage entirely:
+**ihtab** separates probe metadata from element storage entirely:
 
-- A compact array of **7-bit hash tags** (one byte per tag slot) is probed using SIMD, checking 8 tag slots at once.  This replaces many unpredictable per-tag-slot branches with a single highly-predictable group branch, largely eliminating misprediction during probing.  The 7-bit tags also reduce the probability of checking the index array to 1/128 when the part of the hash used for addressing results in probing the same tag slot.
+- There is a compact array of **7-bit hash tags** (one byte per tag slot). It is probed by using SIMD, which checks 8 sequential 7-bit tags at once.  This replaces many unpredictable per-slot branches with a single group comparison and branch, which considerably decreases misprediction.  The 7-bit tags also reduce the probability of checking index (see below) to 1/128 when the index references a different table element.
 
-- The actual elements live in a **separate dense array**, referenced by 32-bit indices stored alongside the tags.  Probing only touches the small tag and index arrays, so cache lines aren't wasted on key-value data until a tag match confirms the index slot is worth examining.
+- The actual elements live in a **separate array**.  They are referenced by 32-bit indices stored in another separate array alongside the tags.  Probing only touches the small tag and index arrays.  Cache lines aren't wasted on key-value data until a tag match confirms the slot is worth examining.
 
-- A small **deleted bitmap** (one bit per element) records which element slots have been deleted.  Iteration walks the dense element array and checks the bitmap -- no scanning through empty tag slots, no touching the tag or index arrays at all.
+- There is also a small bitmap (one bit per element) recording which elements have been deleted.  Iteration walks the dense element array and checks the bitmap.  No scanning through empty tag slots, no touching the tag or index arrays at all.
 
-Deleted elements are also marked in the index array with a tombstone value (~0).  During a search, tombstones are skipped and probing continues until the key is found or an empty tag slot is reached.  An alternative would be to reserve a dedicated tag value for tombstones, detecting deletions without reading the index array -- but that adds complexity and slows down the common case when there are no deleted elements.
+Deleted elements are also marked in the index array with a tombstone value (~0).  They are skipped during searching.  An alternative would be to reserve a dedicated tag value for tombstones, detecting deletions without reading the index array.  But that adds complexity and slows down the common case when there are no deleted elements.
 
 ![ihtab memory layout](ihtab_layout.png)
 
-**Memory.**  When keys or values are large, ihtab can actually use *less* memory than a direct open-addressing table.  In direct tables, every element slot -- including empty ones -- pays the full `sizeof(key) + sizeof(value)` cost.  In ihtab, empty tag and index slots cost only 1 byte (tag) + 4 bytes (index), and elements are stored densely with no wasted space.
+**Memory usage.**  When keys or values are large, ihtab can actually use *less* memory than a direct open-addressing table.  In direct addressing tables, there are always empty element slots whose memory is wasted.  In ihtab, empty tag and index slots take only 5 bytes.  Elements themselves are stored densely in the element array with no wasted space.
 
-**Growth.**  New elements are appended at the position indicated by `bound`.  Insertions continue until the element array is full.  At that point the table is rebuilt: deleted elements are compacted out, and if there is still not enough room, all arrays are doubled in size.  The tag, index, and bitmap data are recomputed from the surviving elements.
+**Table growth.**  New elements are appended at the position indicated by `bound`.  Insertions continue until the element array is full.  At that point the table rebuilds.  Deleted elements are removed from the element array.  And if there is still not enough room for a new element, all arrays are doubled in size.  The tag, index, and bitmap data are recomputed from the surviving elements.
 
-**Load factor.**  The table indexes runs at most 50% occupancy.  The expected probe count for random hashes when h7 is the same is about 1 + 1/2 + 1/4 + ... = 2 group probes, compared to 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load which is typical for **direct** addressing tables.  The index array adds memory overhead, but for large element types the total can actually be smaller since empty tag and index slots don't waste `sizeof(element)` space.
+**Table load factor.**  The tag and index arrays have at most 50% occupancy (occupancy here is a percent of the array elements corresponding to elements actually in the table).  The expected probe count for random hashes when the 7-bit tag happens to match is about 1 + 1/2 + 1/4 + ... = 2 group probes.  Compare that with 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load, which is typical for **direct** addressing tables.
 
-**Collision handling.**  Both tables use linear group probing.  This can lead to clustering with lower-quality hash functions, but at a 50% load factor the effect is small.  Linear probing also benefits cache locality, which is critical for hash table performance.
+**Collision handling.**  Both tables use linear group probing.  This can lead to clustering with lower-quality hash functions, but at 50% load the effect is small.  But more important is that linear probing improves data cache locality and hash table performance as a result.
 
 ## ixhtab: when rebuild cost matters
 
-Rebuilding a large hash table is rare, but when it happens it takes a lot of time.  Some applications -- server ones in particular -- don't tolerate such delays.  Extendible hash tables are designed to reduce this problem.
+Rebuilding a large hash table is rare, but when it happens it takes a lot of time.  Some applications, server ones in particular, cannot tolerate such delays.  Extendible hash tables are designed to reduce this problem.
 
-**ixhtab** (**i**ndexed e**x**tendible hash table) starts out as a single bin, which is essentially an ihtab with 16-bit indices.  The bin grows normally until its size reaches a threshold (e.g. 2^15 elements).  When the threshold is reached, a split happens:
+**ixhtab** (**i**ndexed e**x**tendible hash table) starts out as a single bin. A bin is essentially an ihtab with 16-bit indices.  The bin grows as in ihtab until its size reaches a threshold (e.g. 2^15 elements).  Then a split happens:
 
 1. Two new bins are created from the original one.  Elements are distributed between them based on a 1-bit portion of each key's hash value.
 2. A directory array is created.  Each directory entry points to one of the bins, indexed by that same hash bit.
 
-On subsequent splits, only the full bin is split -- the other bins are untouched.  If the split requires more directory indexes than exist, the directory is doubled in size: the new half is initialized as copies of the old indexes (so multiple directory slots can point to the same bin).
+On subsequent splits, only the full bin is split.  The other bins are untouched.  If the split requires more directory indexes than exist, the directory is doubled in size.  The new half is initialized as copies of the old indexes, so multiple directory slots can point to the same bin.
 
 ![ixhtab split](ixhtab_split.png)
 
-The practical upside: rebuilds only touch one bin at a time, not the entire table.  The 16-bit indices also cut index memory in half
-compared to ihtab's 32-bit ones.  The downside is the directory lookup on every operation and slightly more complex code paths.
+The upside is that rebuilds only touch one bin at a time, not the entire table.  The 16-bit indices also cut index memory in half compared to ihtab's 32-bit ones.  The downside is the directory lookup on every operation and slightly more complex code paths.
 
 ## Hash tags: why 7 bits matter
 
-Each tag slot stores an 8-bit tag.  Seven bits hold a portion of the original hash; the eighth bit (bit 7) marks whether the tag slot is empty. Valid tags have bit 7 clear (0x00-0x7F), empty tag slots use 0x80, and deleted tag slots use 0xFE.
+Each tag slot stores an 8-bit value.  Seven bits hold a portion of the original hash.  The eighth bit (bit 7) marks whether the slot is empty.  Valid tags have bit 7 clear (0x00-0x7F), empty tag slots use 0x80, and deleted tag slots use 0xFE.
 
-For random hashes, a 7-bit tag reduces the probability of a false positive by a factor of 128.  That is, when the tag matches during a probe, there is only a 1-in-128 chance it's a spurious match rather than the actual key.  This means the expensive key comparison -- which may involve following a pointer, comparing a long string, or touching a separate cache line -- is almost never performed unnecessarily.  At 50% load with 7-bit tags, the expected number of false key comparisons per lookup is roughly 1/256.
+For random hashes, a 7-bit tag reduces the probability of a false positive by a factor of 128.  When the tag matches during a probe, there is only a 1-in-128 chance it is a spurious match rather than the actual key.  So the expensive key comparison, which may involve following a pointer, comparing a long string, or touching a separate cache line, is almost never performed unnecessarily.  At 50% load with 7-bit tags, the expected number of false key comparisons per lookup is roughly 1/256.
 
 ## SIMD and SWAR
 
-Both tables probe 8 hash tags at once.  On x86, this is `_mm_cmpeq_epi8` + `_mm_movemask_epi8` -- compare 8 bytes and extract a bitmask in two instructions.  On ARM, NEON intrinsics do the equivalent.  On everything else, a SWAR fallback uses `uint64_t` bit tricks to detect matching bytes without any platform-specific intrinsics.
+Both tables probe 8 hash tags at once.  On x86 `_mm_cmpeq_epi8` and `_mm_movemask_epi8` are used to compare 8 bytes and extract a bitmask.  On ARM, analogous NEON intrinsics are used.  On other targets, a [SWAR](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) fallback is used to detect matching bytes without any target-specific intrinsics.
 
-SIMD searching avoids branch mispredictions, which carry a heavy penalty on modern CPUs (~15-20 cycles per misprediction on current x86).  Without SIMD, probing at 50% load means a per-tag-slot "is this occupied?" branch that is essentially a coin flip -- the worst case for branch prediction.  SIMD replaces all those unpredictable per-tag-slot branches with a single highly-predictable branch ("any match in these 8 tag slots?"), which almost always resolves correctly.
+SIMD searching avoids branch mispredictions to decrease their penalty (~15-20 cycles per misprediction on current x86 CPUs).  Without SIMD, probing at 50% load would mean 50% probability that branch on empty or occupied slot is taken. This is the worst case for CPU branch predictor.  SIMD replaces several unpredictable per-slot branches with a single highly-predictable branch on matching with 8 slots at once.
 
-Empty detection is even cheaper: since empty tag slots have bit 7 set (0x80) and valid tags don't, `_mm_movemask_epi8(group)` extracts the empty mask with zero comparisons -- just one instruction.
+Empty detection is even cheaper.  We need only one instruction `_mm_movemask_epi8(group)` as empty tag has value 0x80 and non-empty tags have always 0 in the 7th bit.
 
 ## Usage
 
@@ -116,7 +115,7 @@ while (Table::iter_valid(it)) {
 Table::destroy(&t);
 ```
 
-ixhtab has the same interface -- just swap the prefix:
+ixhtab has the same interface, just swap the prefix:
 
 ```cpp
 using Table = ixhtab_t<Entry, MyHash, MyEq>;
@@ -125,13 +124,13 @@ using Table = ixhtab_t<Entry, MyHash, MyEq>;
 
 ## Benchmarking
 
-I wrote benchmarks and a script to compare the performance of abseil's `flat_hash_map` (a well-known direct open-addressing hash table) with ihtab and ixhtab.  All three use [vmum](https://github.com/vnmakarov/mum-hash), a high-performance, high-quality hash function.  The benchmarked tables have 100 (small), 10,000 (medium), and 1,000,000 (large) elements, with both integer and string key types as well as small and large value types.  Here are the results on AMD9900X:
+I wrote benchmarks and a script to compare the performance of abseil's `flat_hash_map`, a well-known direct open-addressing hash table, with ihtab and ixhtab.  All three use [vmum](https://github.com/vnmakarov/mum-hash), a high-performance, high-quality hash function.  The benchmarked tables have 100 (small), 10,000 (medium), and 1,000,000 (large) elements.  I used 64-bit integer keys and values of size 4 bytes and about 100 bytes. Here are the results on AMD9900X:
 
 ![benchmark comparison](amd_comparison.png)
 
-As you can see, ihtab works better than abseil for practically all benchmarks.  The bigger the table, the better ihtab's results -- which most probably shows that using compact h7 tags and indices with a low load factor improves cache locality compared to direct open addressing.  The ixhtab results show that extendible hash tables decrease throughput considerably, although they reduce worst-case delays caused by full-table rebuilds.
+ihtab works better than abseil for practically all benchmarks.  The bigger the table, the better ihtab's results.  I believe this is a result of better cache locality when using compact h7 tags and indices with a low load factor.  The results of ixhtab show that extendible hash tables decrease throughput considerably.  That is a payment for reducing worst-case delays caused by full-table rebuilds.
 
-People could critique my choice of benchmarks -- it always happens. Benchmarks are evil, but the absence of benchmarks is more evil. To address this critique, I also include results from a hash table benchmark suite written by another person: [c_cpp_hash_tables_benchmark](https://github.com/JacksonAllan/c_cpp_hash_tables_benchmark). I made a [copy of the repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark) and added ihtab and ixhtab for benchmarking.  Here are the results:
+People could critique my choice of benchmarks, and it always happens.  Therefore I also include results from a hash table benchmark suite written independently by another person: [c_cpp_hash_tables_benchmark](https://github.com/JacksonAllan/c_cpp_hash_tables_benchmark).  I made a [copy of the repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark) and added ihtab and ixhtab for benchmarking.  Here are the results:
 
 ![performance heatmap](heatmap_perf.svg)
 
@@ -139,8 +138,9 @@ People could critique my choice of benchmarks -- it always happens. Benchmarks a
 
 ## When to use which
 
-- **ihtab**: general purpose, fast iteration, good for large tables where you need predictable lookup performance
-- **ixhtab**: when you have many elements and want to avoid expensive full-table rebuilds, or when memory matters (16-bit indices)
-- Both beat `std::unordered_map` handily and are competitive with boost/abseil flat hash maps on most workloads
+**ihtab** is a general-purpose table with fast iteration, good for large tables where you need predictable lookup performance.  Use **ixhtab** only when you want to avoid expensive full-table rebuilds.  ixhtab also can be used when you need to save memory as it uses 16-bit indices.  The both tables are much better than C++ `std::unordered_map`.  They are also competitive with boost/abseil flat hash maps on most workloads.
 
-Designing a hash table that works best for all use scenarios is probably impossible -- the right design depends on your data, your access patterns, and your key/value sizes.  But I hope ihtab and ixhtab would be good candidates for your choice.
+## Conclusion
+
+Designing the hash tables I've tried more than ten variants of indexed hash tables (some of them can be found in history of [repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark)).  The variants had different conflict resolution, hash tag usage, and table data placement.  I found that designing a hash table that works best for all use scenarios is probably impossible.  The right design depends on your data, your access patterns, and your key/value sizes.  But I hope ihtab and ixhtab would be good candidates for your choice.
+You can find ihtab and ixhtab on [github](https://github.com/vnmakarov/ihtab).
