@@ -128,7 +128,19 @@ I wrote benchmarks and a script to compare the performance of abseil's `flat_has
 
 ![benchmark comparison](amd_comparison.png)
 
-ihtab works better than abseil for practically all benchmarks.  The bigger the table, the better ihtab's results.  I believe this is a result of better cache locality when using compact h7 tags and indices with a low load factor.  The results of ixhtab show that extendible hash tables decrease throughput considerably.  That is a payment for reducing worst-case delays caused by full-table rebuilds.
+The results of ixhtab show that extendible hash tables decrease throughput considerably.  That is a payment for reducing worst-case delays caused by full-table rebuilds.
+
+ihtab works better than abseil for practically all benchmarks.  The bigger the table, the better ihtab's results.  I believe this is a result of better branch prediction and better cache locality when using compact h7 tags and indices with a low load factor.  To confirm this, here are statistics obtained by perf for 10M IntLookup in a table with 1M elements on AMD9900X:
+
+| Metric                | absl         | ihtab        | Advantage            |
+|-----------------------|--------------|--------------|----------------------|
+| Cycles                | 641.7M       | 466.4M       | **ihtab** 27% fewer  |
+| Instructions          | 493.3M       | 513.9M       | **absl** 4% fewer    |
+| IPC                   | 0.77         | 1.10         | **ihtab** 43% higher |
+| L1-dcache miss rate   | 20.7%        | 17.1%        | **ihtab** 17% lower  |
+| Branch misses         | 913K (1.83%) | 338K (0.59%) | **ihtab** 63% fewer  |
+| dTLB miss rate        | 28.7%        | 7.0%         | **ihtab** 4.1x lower |
+
 
 People could critique my choice of benchmarks, and it always happens.  Therefore I also include results from a hash table benchmark suite written independently by another person: [c_cpp_hash_tables_benchmark](https://github.com/JacksonAllan/c_cpp_hash_tables_benchmark).  I made a [copy of the repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark) and added ihtab and ixhtab for benchmarking.  Here are the results:
 
@@ -144,3 +156,5 @@ People could critique my choice of benchmarks, and it always happens.  Therefore
 
 Designing the hash tables I've tried more than ten variants of indexed hash tables (some of them can be found in history of [repository](https://github.com/vnmakarov/c_cpp_hash_tables_benchmark)).  The variants had different conflict resolution, hash tag usage, and table data placement.  I found that designing a hash table that works best for all use scenarios is probably impossible.  The right design depends on your data, your access patterns, and your key/value sizes.  But I hope ihtab and ixhtab would be good candidates for your choice.
 You can find ihtab and ixhtab on [github](https://github.com/vnmakarov/ihtab).
+
+So what is next?  I'd like to try the ihtab design in a widely used programming language.  I think the Go map implementation would be a good candidate for this.
