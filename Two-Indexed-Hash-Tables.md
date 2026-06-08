@@ -2,7 +2,9 @@
 
 My career path has been mostly about programming languages and compiler implementation.  Most high-level languages have built-in hash tables, and compilers and interpreters extensively use hash tables as the most effective search data structure.  So I have a natural interest in hash tables and hashing techniques.
 
-In recent years, **direct** [open-addressing hash tables](https://en.wikipedia.org/wiki/Open_addressing) with high load factors have gained popularity. They use [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) to probe quickly even when the table is nearly full.  One well-known example of this approach is the Swiss hash table (used in [abseil](https://abseil.io/about/design/swisstables) and [Boost](https://www.boost.org/doc/libs/1_85_0/libs/unordered/doc/html/unordered.html)).
+In recent years, the Swiss table design has become popular.  Swiss tables are **direct** [open-addressing hash tables](https://en.wikipedia.org/wiki/Open_addressing) with mainly linear probing.  They use [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) to probe quickly even when the table is nearly full and a very high load factor (87.5%) to save memory used by **direct** addressing tables.  Well-known implementations include [abseil](https://abseil.io/about/design/swisstables) and [Boost](https://www.boost.org/doc/libs/1_85_0/libs/unordered/doc/html/unordered.html).
+
+Open-addressing hash tables with linear probing were first described in a 1958 [publication](https://www.mathnet.ru/rus/dan28010) by the famous Russian academician A. Ershov.  In the publication, Ershov (he was a director of a postgraduate school where I studied) gave an empirical estimation based on the Monte Carlo method of the average number of probes for 50% load.  Later, average probe counts for open-addressing tables with linear probing depending on the table load were obtained for a simplified model of the table.  You can find them in Knuth's book "The Art of Computer Programming", volume 3.  For load 87.5%, successful and unsuccessful search require correspondingly about 4 and 32 probes on average.
 
 I've never been comfortable with the high load factors and slow iterators that come with direct open addressing.  So I took a different angle: decrease the load factor and separate the probe metadata from the elements entirely, using indices to bridge the two. Here's what came out of it.  Spoiler: geomean performance of the resulting **indexed** open-addressing table on different benchmarks is better than the one of the best **direct** open-addressing tables.
 
@@ -10,9 +12,9 @@ I've never been comfortable with the high load factors and slow iterators that c
 
 Many hash tables store key-value pairs directly in the probe array.  This has two performance problems on modern CPUs:
 
-- **Branch misprediction.**  At 50% load, roughly half the probes hit an occupied slot when searching for a key not existing in the table.  The branch on empty/busy slot becomes a coin flip, which is the worst case for branch prediction.  Each misprediction costs ~15-20 cycles on current x86.
-
 - **Poor cache locality.**  Probing touches full key-value slots.  This wastes cache lines when keys or values are large.  We could keep pointers to key-value pairs in the table instead of the pairs themselves to decrease size of unused slots but essentially this turns the table into an indexed one.  Iteration is even worse.  You walk every slot in the array, skipping empty ones.  That is especially wasteful when the table is sparse or the elements are large.
+
+- **Branch misprediction.**  At 50% load, roughly half the probes hit an occupied slot when searching for a key not existing in the table.  The branch on empty/busy slot becomes a coin flip, which is the worst case for branch prediction.  Each misprediction costs ~15-20 cycles on current x86.
 
 I wanted to improve both.
 
@@ -32,7 +34,7 @@ Deleted elements are also marked in the index array with a tombstone value (~0).
 
 **Table growth.**  New elements are appended at the position indicated by `bound`.  Insertions continue until the element array is full.  At that point the table rebuilds.  Deleted elements are removed from the element array.  And if there is still not enough room for a new element, all arrays are doubled in size.  The tag, index, and bitmap data are recomputed from the surviving elements.
 
-**Table load factor.**  The tag and index arrays have at most 50% occupancy (occupancy here is a percent of the array elements corresponding to elements actually in the table).  The expected probe count for random hashes when the 7-bit tag happens to match is about 1 + 1/2 + 1/4 + ... = 2 group probes.  Compare that with 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load, which is typical for **direct** addressing tables.
+**Table load factor.**  The tag and index arrays have at most 50% occupancy (occupancy here is a percent of the array elements corresponding to elements actually in the table).  A simple estimated probe count of finding non-empty slot is 1 + 1/2 + 1/4 + ... = 2 group probes.  Compare that with 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load, which is typical for **direct** addressing tables.
 
 **Collision handling.**  Both tables use linear group probing.  This can lead to clustering with lower-quality hash functions, but at 50% load the effect is small.  But more important is that linear probing improves data cache locality and hash table performance as a result.
 
@@ -55,7 +57,7 @@ The upside is that rebuilds only touch one bin at a time, not the entire table. 
 
 Each tag slot stores an 8-bit value.  Seven bits hold a portion of the original hash.  The eighth bit (bit 7) marks whether the slot is empty.  Valid tags have bit 7 clear (0x00-0x7F), empty tag slots use 0x80, and deleted tag slots use 0xFE.
 
-For random hashes, a 7-bit tag reduces the probability of a false positive by a factor of 128.  When the tag matches during a probe, there is only a 1-in-128 chance it is a spurious match rather than the actual key.  So the expensive key comparison, which may involve following a pointer, comparing a long string, or touching a separate cache line, is almost never performed unnecessarily.  At 50% load with 7-bit tags, the expected number of false key comparisons per lookup is roughly 1/256.
+For uniformly random hashes, a 7-bit tag reduces the probability of a false positive by a factor of 128.  When the tag matches during a probe, there is only a 1-in-128 chance it is a spurious match rather than the actual key.  So the expensive key comparison, which may involve following a pointer, comparing a long string, or touching a separate cache line, is almost never performed unnecessarily.  At 50% load with a group of eight 7-bit tags, the expected number of false key comparisons per unsuccessful lookup is roughly 1/32.
 
 ## SIMD and SWAR
 
