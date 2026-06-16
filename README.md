@@ -6,16 +6,25 @@ headers (`ihtab.h`, `ixhtab.h`).  No build system required to use them.
 
 ## Design
 
-Standard Swiss tables store key-value pairs directly in the probe array.
-At high load that means frequent cache misses and branch mispredictions on
-failed lookups.
+These days hash tables based on [swiss
+table](https://abseil.io/about/design/swisstables) design have become
+very popular.  Standard swiss table is a **direct** open-address hash
+table that stores key-value pairs with probing data in one array.  To
+decrease memory waste on unused slots for key-value pairs, swiss table
+uses a very high load factor (maximum used key-value pairs / allocated
+key-value pairs).  This causes frequent cache misses and branch
+mispredictions on failed lookups.  Swiss table keeps probing data in
+groups and uses SIMD to speed up the search.  Within each group the
+probing is linear.
 
-Both tables here take a different path: a compact array of 8-bit tags
-(7-bit hash fingerprint + 1 empty/deleted bit) is probed with SIMD; the
-actual elements live in a **separate dense array** and are referenced by
-small integer indices.  At 50 % load the expected probe count is ~2 groups
-vs ~8 for a 7/8-loaded Swiss table.  Iteration walks the dense element
-array with a deleted-bit check — no empty-slot gaps.
+Both tables here take a path different from the swiss table: a compact
+array of 8-bit tags (7-bit hash fingerprint + 1 empty/deleted bit) is
+probed with SIMD; the actual elements live in a **separate dense
+array** and are referenced by small integer indices.  For linear
+probing at 50 % load the expected average probe count is ~1 probe vs
+~4 for a 7/8-loaded Swiss table for successful search and ~2 vs 32 for
+unsuccessful search.  Iteration walks the dense element array with a
+deleted-bit check — no empty-slot gaps.
 
 ### ihtab
 
@@ -25,6 +34,7 @@ array with a deleted-bit check — no empty-slot gaps.
 
 ### ixhtab
 
+- [Extendible hash table](https://en.wikipedia.org/wiki/Extendible_hashing)
 - Directory of bins, each bin is an ihtab with 16-bit indices (max 2^15
   elements per bin).
 - Only the full bin is split on overflow; the rest of the table is
@@ -52,20 +62,17 @@ Tab t(64);  // min_size=64; default is 8
 // Insert
 Entry e{42, 100};
 Entry *slot;
-if (!t.perform(e, INSERT, &slot))
-    *slot = e;           // new element — write it
+if (!t.perform(e, INSERT, &slot)) *slot = e; // new element — write it
 
 // Lookup
 Entry key{42, 0};
-if (t.perform(key, FIND, &slot))
-    printf("%d\n", slot->value);
+if (t.perform(key, FIND, &slot)) printf("%d\n", slot->value);
 
 // Delete
 t.perform(key, DELETE, &slot);
 
 // Iterate
-for (auto &e : t)
-    printf("%llu -> %d\n", e.key, e.value);
+for (auto &e : t) printf("%llu -> %d\n", e.key, e.value);
 ```
 
 For ixhtab, use `#include "ixhtab.hpp"` with `using namespace ixht;` and
@@ -99,13 +106,11 @@ iht_create_entry(&t, 64);
 // Insert
 entry e = {42, 100};
 entry *slot;
-if (!iht_perform_entry(&t, &e, IHT_INSERT, &slot))
-    *slot = e;
+if (!iht_perform_entry(&t, &e, IHT_INSERT, &slot)) *slot = e;
 
 // Lookup
 entry key = {42, 0};
-if (iht_perform_entry(&t, &key, IHT_FIND, &slot))
-    printf("%d\n", slot->value);
+if (iht_perform_entry(&t, &key, IHT_FIND, &slot)) printf("%d\n", slot->value);
 
 // Delete
 iht_perform_entry(&t, &key, IHT_DELETE, &slot);
