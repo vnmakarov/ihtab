@@ -36,7 +36,7 @@ Here is the data structure layout for a table with capacity of 8 elements:
 
 **Table growth.**  New elements are appended at the position indicated by `bound`.  Insertions continue until the element array is full.  At that point the table rebuilds.  Deleted elements are removed from the element array.  And if there is still not enough room for a new element, all arrays are doubled in size.  The tag, index, and bitmap data are recomputed from the surviving elements.
 
-**Table load factor.**  The tag and index arrays have at most 50% occupancy (occupancy here is a percent of the array elements corresponding to elements actually in the table).  A simple estimated probe count of finding non-empty slot is 1 + 1/2 + 1/4 + ... = 2 group probes.  Compare that with 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load, which is typical for **direct** addressing tables.
+**Table load factor.**  The tag and index arrays have at most 50% occupancy (occupancy here is a percent of the array elements corresponding to elements actually in the table).  A simple estimated probe count of finding non-empty slot is 1 + 1/2 + 1/4 + ... = 2 probes.  Compare that with 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load, which is typical for **direct** addressing tables.
 
 **Collision handling.**  Both tables use linear group probing.  This can lead to clustering with lower-quality hash functions, but at 50% load the effect is small.  But more important is that linear probing improves data cache locality and hash table performance as a result.
 
@@ -59,7 +59,7 @@ The upside is that rebuilds only touch one bin at a time, not the entire table. 
 
 Each tag slot stores an 8-bit value.  Seven bits hold a portion of the original hash.  The eighth bit (bit 7) marks whether the slot is empty.  Valid tags have bit 7 clear (0x00-0x7F), empty tag slots use 0x80, and deleted tag slots use 0xFE.
 
-For uniformly random hashes, a 7-bit tag reduces the probability of a false positive by a factor of 128.  When the tag matches during a probe, there is only a 1-in-128 chance it is a spurious match rather than the actual key.  So the expensive key comparison, which may involve following a pointer, comparing a long string, or touching a separate cache line, is almost never performed unnecessarily.  At 50% load with a group of eight 7-bit tags, the expected number of false key comparisons per unsuccessful lookup is roughly 1/32.
+For uniformly random hashes, a 7-bit tag reduces the probability of a false positive by a factor of 128.  When the tag matches during a probe, there is only a 1-in-128 chance it is a spurious match rather than the actual key.  So the expensive key comparison, which may involve following a pointer, comparing a long string, or touching a separate cache line, is almost never performed unnecessarily.  At 50% load with a group of eight 7-bit tags, the expected number of false key comparisons per unsuccessful group lookup is roughly 1/32.
 
 ## SIMD and SWAR
 
