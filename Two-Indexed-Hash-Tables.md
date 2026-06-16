@@ -28,6 +28,8 @@ I wanted to improve both.
 
 Deleted elements are also marked in the index array with a tombstone value (~0).  They are skipped during searching.  An alternative would be to reserve a dedicated tag value for tombstones, detecting deletions without reading the index array.  But that adds complexity and slows down the common case when there are no deleted elements.
 
+Here is the data structure layout for a table with capacity of 8 elements:
+
 ![ihtab memory layout](ihtab_layout.png)
 
 **Memory usage.**  When keys or values are large, ihtab can actually use *less* memory than a direct open-addressing table.  In direct addressing tables, there are always empty element slots whose memory is wasted.  In ihtab, empty tag and index slots take only 5 bytes.  Elements themselves are stored densely in the element array with no wasted space.
@@ -61,7 +63,7 @@ For uniformly random hashes, a 7-bit tag reduces the probability of a false posi
 
 ## SIMD and SWAR
 
-Both tables probe 8 hash tags at once.  On x86 `_mm_cmpeq_epi8` and `_mm_movemask_epi8` are used to compare 8 bytes and extract a bitmask.  On ARM, analogous NEON intrinsics are used.  On other targets, a [SWAR](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) fallback is used to detect matching bytes without any target-specific intrinsics.
+Both tables probe 8 hash tags at once.  On x86 `_mm_cmpeq_epi8` and `_mm_movemask_epi8` are used to compare 8 bytes and extract a bitmask.  On ARM, analogous NEON intrinsics are used.  On other targets, a [SWAR](https://en.wikipedia.org/wiki/SWAR) fallback is used to detect matching bytes without any target-specific intrinsics.
 
 SIMD searching avoids branch mispredictions to decrease their penalty (~15-20 cycles per misprediction on current x86 CPUs).  Without SIMD, probing at 50% load would mean 50% probability that branch on empty or occupied slot is taken. This is the worst case for CPU branch predictor.  SIMD replaces several unpredictable per-slot branches with a single highly-predictable branch on matching with 8 slots at once.
 
@@ -69,60 +71,91 @@ Empty detection is even cheaper.  We need only one instruction `_mm_movemask_epi
 
 ## Usage
 
-Both are header-only C++ templates:
+Both tables are available as C++20 header-only templates (`ihtab.hpp`,
+`ixhtab.hpp`) and C11 macro-generated headers (`ihtab.h`, `ixhtab.h`).
+
+C++ usage:
 
 ```cpp
-#include "ihtab.h"
+#include "ihtab.hpp"
+using namespace iht;
 
 struct Entry { uint32_t key; uint32_t value; };
 
 struct MyHash {
-  size_t operator()(const Entry &e) const {
-    return e.key * 0x9E3779B97F4A7C15ULL;
-  }
+  hash_t operator()(const Entry &e) const { return e.key * 0x9E3779B97F4A7C15ULL; }
 };
 
 struct MyEq {
-  bool operator()(const Entry &a, const Entry &b) const {
-    return a.key == b.key;
-  }
+  bool operator()(const Entry &a, const Entry &b) const { return a.key == b.key; }
 };
 
-using Table = ihtab_t<Entry, MyHash, MyEq>;
+using Table = ihtab<Entry, MyHash, MyEq>;
 
-Table t;
-Table::create(&t, 1024);  // min capacity hint
+Table t(1024);  // min capacity hint
 
 // Insert
 Entry e{42, 100};
 Entry *res;
-if (!Table::do_(&t, e, IHTAB_INSERT, &res))
-  *res = e;  // write element on new insert
+if (!t.perform(e, INSERT, &res)) *res = e;  // write element on new insert
 
 // Find
 Entry query{42, 0};
-if (Table::do_(&t, query, IHTAB_FIND, &res))
-  printf("found: %u\n", res->value);
+if (t.perform(query, FIND, &res)) printf("found: %u\n", res->value);
 
 // Delete
-Table::do_(&t, query, IHTAB_DELETE, &res);
+t.perform(query, DELETE, &res);
 
 // Iterate
-auto it = Table::iter_begin(&t);
-while (Table::iter_valid(it)) {
+for (auto &e : t) printf("%u -> %u\n", e.key, e.value);
+```
+
+For ixhtab, use `#include "ixhtab.hpp"` with `using namespace ixht;`
+and replace `ihtab` with `ixhtab`.
+
+C usage:
+
+Define an element type and pass it with hash and equality functions to
+`DEFINE_IHT`, which generates type-specific structs and functions with
+an `_<element-type>` suffix:
+
+```c
+#include "ihtab.h"
+
+typedef struct { uint32_t key; uint32_t value; } entry;
+
+static inline iht_hash_t entry_hash(entry e) { return e.key * 0x9E3779B97F4A7C15ULL; }
+static inline bool entry_eq(entry a, entry b) { return a.key == b.key; }
+
+DEFINE_IHT(entry, entry_hash, entry_eq)
+
+struct iht_entry t;
+iht_create_entry(&t, 1024);
+
+// Insert
+entry e = {42, 100};
+entry *res;
+if (!iht_perform_entry(&t, &e, IHT_INSERT, &res)) *res = e; // write element on new insert
+
+// Find
+entry query = {42, 0};
+if (iht_perform_entry(&t, &query, IHT_FIND, &res)) printf("found: %u\n", res->value);
+
+// Delete
+iht_perform_entry(&t, &query, IHT_DELETE, &res);
+
+// Iterate
+struct iht_iter_entry it = iht_iter_begin_entry(&t);
+while (iht_iter_valid_entry(&it)) {
   printf("%u -> %u\n", it.ptr->key, it.ptr->value);
-  Table::iter_next(&t, it);
+  iht_iter_next_entry(&t, &it);
 }
 
-Table::destroy(&t);
+iht_destroy_entry(&t);
 ```
 
-ixhtab has the same interface, just swap the prefix:
-
-```cpp
-using Table = ixhtab_t<Entry, MyHash, MyEq>;
-// IXHTAB_INSERT, IXHTAB_FIND, IXHTAB_DELETE
-```
+For ixhtab in C, replace `iht` / `IHT_*` / `DEFINE_IHT` with `ixht` /
+`IXHT_*` / `DEFINE_IXHT`.
 
 ## Benchmarking
 
