@@ -36,7 +36,7 @@ Here is the data structure layout for a table with a capacity of 8 elements:
 
 **Table growth.**  New elements are appended at the position indicated by `bound`.  Insertions continue until the element array is full.  At that point, the table rebuilds.  Deleted elements are removed from the element array.  And if there is still not enough room for a new element, all arrays are doubled in size.  The tag, index, and bitmap data are recomputed from the surviving elements.
 
-**Table load factor.**  The tag and index arrays have at most 50% occupancy (occupancy here is a percent of the array elements corresponding to elements actually in the table).  A simple estimated probe count of finding non-empty slot is 1 + 1/2 + 1/4 + ... = 2 probes.  Compare that with 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load, which is typical for **direct**-addressing tables.
+**Table load factor.**  The tag and index arrays have at most 50% occupancy (occupancy here is a percent of the array elements corresponding to elements actually in the table).  A simple estimated probe count of finding an empty slot (e.g. when inserting a key not in the table) is 1 + 1/2 + 1/4 + ... = 2 probes.  Compare that with 1 + 7/8 + 49/64 + ... = 8 probes for open addressing at 7/8 load, which is typical for **direct**-addressing tables.
 
 **Collision handling.**  Both tables use linear group probing.  This can lead to clustering with lower-quality hash functions, but at 50% load the effect is small.  But more important is that linear probing improves data cache locality and hash table performance as a result.
 
