@@ -26,7 +26,6 @@ typedef unsigned int ebin_ind_t;
 
 static constexpr unsigned int GROUP_SIZE = 8;
 static constexpr unsigned char EMPTY_H7 = 0x80;
-static constexpr unsigned char DELETED_H7 = 0xfe;
 static constexpr ind_t INDEX_DELETED = ~(ind_t) 0;
 static constexpr unsigned int MAX_BIN_SIZE_POWER = 15;
 

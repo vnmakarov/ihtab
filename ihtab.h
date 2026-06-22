@@ -17,7 +17,6 @@ typedef size_t iht_hash_t;
 
 #define IHT_GROUP_SIZE 8
 #define IHT_EMPTY_H7 0x80
-#define IHT_DELETED_H7 0xfe
 #define IHT_INDEX_DELETED (~(iht_ind_t) 0)
 #define IHT_LF_FACTOR 1
 #define IHT_LF_DIVISOR 2

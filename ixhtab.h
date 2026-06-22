@@ -18,7 +18,6 @@ typedef unsigned int ebin_ixht_ind_t;
 
 #define IXHT_GROUP_SIZE 8
 #define IXHT_EMPTY_H7 0x80
-#define IXHT_DELETED_H7 0xfe
 #define IXHT_INDEX_DELETED ((ixht_ind_t) ~(unsigned) 0)
 #define IXHT_MAX_BIN_SIZE_POWER 15
 
