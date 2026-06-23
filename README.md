@@ -42,6 +42,8 @@ deleted-bit check — no empty-slot gaps.
 - Trades a directory indirection for bounded rebuild latency; suits large
   tables with latency-sensitive workloads.
 
+More information about the design can be found in this [blog post](https://vnmakarov.github.io/data%20structures/c/c++/open-source/2026/06/23/two-indexed-hash-tables.html).
+
 ## C++ Usage
 
 Both C++ tables follow the same API.  Define an entry type that bundles key
