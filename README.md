@@ -1,3 +1,5 @@
+![ixht](ixht.png)
+
 # ihtab / ixhtab — single-header indexed hash tables
 
 Two open-addressing hash tables with separate element storage, available
