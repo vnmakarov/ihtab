@@ -3,8 +3,13 @@
 #include <stdbool.h>
 #include <string.h>
 
+#ifdef USE_V0
+#include "ihtab-v0.h"
+#include "ixhtab-v0.h"
+#else
 #include "ihtab.h"
 #include "ixhtab.h"
+#endif
 
 typedef struct {
   uint32_t key;
