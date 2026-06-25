@@ -18,7 +18,11 @@ TEST_CXXFLAGS = -I. -std=c++20 -O3 -Wall -Wpedantic
 TEST_CFLAGS   = -I. -std=c11 -O3 -Wall
 TEST_BINS     = tests/test tests/test_c tests/test_v0 tests/test_c_v0
 
-.PHONY: bench test install uninstall clean
+PROFILE_SRC    = benchmarks/profile_lookup.cpp
+PROFILE_SIZES  = 1000000 20000000
+PROFILE_LABELS = 1M 20M
+
+.PHONY: bench profile test install uninstall clean
 
 bench: $(BENCH)
 	benchmarks/run_comparison.sh
@@ -34,6 +38,17 @@ $(BENCH_CPP_V0_O): $(SRC) benchmarks/bench_c.h ihtab-v0.hpp ixhtab-v0.hpp vmum.h
 
 $(BENCH): $(SRC) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) ihtab.hpp ixhtab.hpp vmum.h benchmarks/bench_c.h
 	$(CXX) $(CXXFLAGS) $(SRC) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) -o $(BENCH)
+
+profile:
+	@sizes="$(PROFILE_SIZES)"; labels="$(PROFILE_LABELS)"; \
+	set -- $$labels; \
+	for n in $$sizes; do \
+	  lbl=$$1; shift; \
+	  $(CXX) $(CXXFLAGS) -DPROFILE_N=$$n $(PROFILE_SRC) -o benchmarks/profile_$$lbl; \
+	  $(CXX) $(CXXFLAGS) -DPROFILE_N=$$n -DUSE_V0 $(PROFILE_SRC) -o benchmarks/profile_$${lbl}_v0; \
+	  benchmarks/profile_table.sh benchmarks/profile_$$lbl benchmarks/profile_$${lbl}_v0 \
+	    "N=$$lbl ($$n keys, 10 iterations)"; \
+	done
 
 test: $(TEST_BINS)
 	@for t in $(TEST_BINS); do echo "=== $$t ==="; ./$$t || exit 1; done
@@ -62,4 +77,4 @@ uninstall:
 	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.h     $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
 
 clean:
-	$(RM) $(BENCH) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) $(TEST_BINS)
+	$(RM) $(BENCH) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) benchmarks/profile_* $(TEST_BINS)
