@@ -25,9 +25,8 @@ typedef unsigned short depth_t;
 typedef unsigned int ebin_ind_t;
 
 static constexpr unsigned int GROUP_SIZE = 8;
-static constexpr size_t GROUP_BYTES = GROUP_SIZE * (1 + sizeof(ind_t));
-static constexpr unsigned char EMPTY_H7 = 0xc0;
-static constexpr unsigned char DELETED_H7 = 0x80;
+static constexpr unsigned char EMPTY_H7 = 0x80;
+static constexpr ind_t INDEX_DELETED = ~(ind_t) 0;
 static constexpr unsigned int MAX_BIN_SIZE_POWER = 15;
 
 static_assert (MAX_BIN_SIZE_POWER <= 15, "bin size must fit in uint16_t indexes");
@@ -49,7 +48,7 @@ static IXHTAB_FORCE_INLINE unsigned int match_mask (group_t g, unsigned char h7_
 }
 
 static IXHTAB_FORCE_INLINE unsigned int match_empty (group_t g) {
-  return (unsigned int) _mm_movemask_epi8 (_mm_and_si128 (g, _mm_slli_epi64 (g, 1))) & 0xff;
+  return (unsigned int) _mm_movemask_epi8 (g) & 0xff;
 }
 
 #elif defined(__aarch64__) || defined(_M_ARM64)
@@ -82,7 +81,7 @@ static IXHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val)
   return (cmp - SWAR_LSB) & ~cmp & SWAR_MSB;
 }
 
-static IXHTAB_FORCE_INLINE uint64_t match_empty (group_t g) { return (g & SWAR_MSB) & (g << 1); }
+static IXHTAB_FORCE_INLINE uint64_t match_empty (group_t g) { return g & SWAR_MSB; }
 
 #endif
 
@@ -93,7 +92,8 @@ struct ebin_t {
   unsigned int els_start, els_bound;
   El *els;
   char *deleted;
-  unsigned char *groups;
+  unsigned char *h7;
+  ind_t *indexes;
   unsigned int groups_mask;
 };
 
@@ -121,18 +121,18 @@ class ixhtab {
     unsigned int del_bytes = (size + 7) / 8;
     b.deleted = (char *) std::calloc (del_bytes, 1);
     unsigned int indexes_size = 2 * size;
-    unsigned int num_groups = indexes_size / GROUP_SIZE;
-    b.groups = (unsigned char *) std::aligned_alloc (GROUP_SIZE, num_groups * GROUP_BYTES);
-    for (unsigned int i = 0; i < num_groups; i++)
-      std::memset (b.groups + i * GROUP_BYTES, EMPTY_H7, GROUP_SIZE);
-    b.groups_mask = num_groups - 1;
+    b.h7 = (unsigned char *) std::aligned_alloc (GROUP_SIZE, indexes_size);
+    std::memset (b.h7, EMPTY_H7, indexes_size);
+    b.indexes = (ind_t *) std::malloc (indexes_size * sizeof (ind_t));
+    b.groups_mask = indexes_size / GROUP_SIZE - 1;
     return ind;
   }
 
   static void destroy_bin (ebin_t<El> &b) {
     std::free (b.els);
     std::free (b.deleted);
-    std::free (b.groups);
+    std::free (b.h7);
+    std::free (b.indexes);
   }
 
   static void get_params (size_t size, size_t &bins_num, size_t &bin_power2, size_t &bin_size) {
@@ -179,23 +179,26 @@ class ixhtab {
     Eq eq_fn;
     unsigned char h7_val = (hash >> (sizeof (hash_t) * 8 - 7)) & 0x7f;
     unsigned int group_ind = (unsigned int) (hash / GROUP_SIZE) & bin.groups_mask;
+    unsigned int first_deleted_slot = ~0u;
 
     for (;;) {
-      unsigned char *group_base = bin.groups + group_ind * GROUP_BYTES;
-      group_t group = group_load (group_base);
-      ind_t *group_indexes = (ind_t *) (group_base + GROUP_SIZE);
+      unsigned char *group_h7 = bin.h7 + group_ind * GROUP_SIZE;
+      group_t group = group_load (group_h7);
       auto mmask = match_mask (group, h7_val);
       while (mmask) {
         unsigned int bit = __builtin_ctzll (mmask);
         if (mask_scale) bit /= 8;
-        ind_t el_ind = group_indexes[bit];
-        if (eq_fn (bin.els[el_ind], el)) {
+        unsigned int slot = group_ind * GROUP_SIZE + bit;
+        ind_t el_ind = bin.indexes[slot];
+        if (el_ind == INDEX_DELETED) {
+          if (first_deleted_slot == ~0u) first_deleted_slot = slot;
+        } else if (eq_fn (bin.els[el_ind], el)) {
           if (action != DELETE) {
             *res = &bin.els[el_ind];
           } else {
             els_num--;
             bin.deleted[el_ind / 8] |= 1 << (el_ind % 8);
-            group_base[bit] = DELETED_H7;
+            bin.indexes[slot] = INDEX_DELETED;
           }
           return true;
         }
@@ -206,10 +209,16 @@ class ixhtab {
       if (empty_mask) {
         if (action >= INSERT) {
           els_num++;
-          unsigned int bit = __builtin_ctzll (empty_mask);
-          if (mask_scale) bit /= 8;
-          group_base[bit] = h7_val;
-          group_indexes[bit] = (ind_t) bin.els_bound;
+          unsigned int slot;
+          if (first_deleted_slot != ~0u) {
+            slot = first_deleted_slot;
+          } else {
+            unsigned int bit = __builtin_ctzll (empty_mask);
+            if (mask_scale) bit /= 8;
+            slot = group_ind * GROUP_SIZE + bit;
+          }
+          bin.h7[slot] = h7_val;
+          bin.indexes[slot] = (ind_t) bin.els_bound;
           *res = &bin.els[bin.els_bound];
           bin.els_bound++;
         }
@@ -227,9 +236,8 @@ class ixhtab {
     for (;;) {
       auto &new_bin = bins[new_ind];
       auto &bin = bins[bin_ind];
-      unsigned int num_groups = bin.groups_mask + 1;
-      for (unsigned int gi = 0; gi < num_groups; gi++)
-        std::memset (bin.groups + gi * GROUP_BYTES, EMPTY_H7, GROUP_SIZE);
+      unsigned int indexes_size = (bin.groups_mask + 1) * GROUP_SIZE;
+      std::memset (bin.h7, EMPTY_H7, indexes_size);
       hash_t split_mask = (hash_t) 1 << bin.depth;
       new_bin.depth = ++bin.depth;
       if (bin.depth > max_depth) {
@@ -301,11 +309,10 @@ class ixhtab {
           unsigned int del_bytes = (els_size + 7) / 8;
           b.deleted = (char *) std::calloc (del_bytes, 1);
           b.els = (El *) std::realloc (b.els, els_size * sizeof (El));
-          unsigned int num_groups = indexes_size / GROUP_SIZE;
-          b.groups = (unsigned char *) std::realloc (b.groups, num_groups * GROUP_BYTES);
-          for (unsigned int gi = 0; gi < num_groups; gi++)
-            std::memset (b.groups + gi * GROUP_BYTES, EMPTY_H7, GROUP_SIZE);
-          b.groups_mask = num_groups - 1;
+          b.h7 = (unsigned char *) std::realloc (b.h7, indexes_size);
+          std::memset (b.h7, EMPTY_H7, indexes_size);
+          b.indexes = (ind_t *) std::realloc (b.indexes, indexes_size * sizeof (ind_t));
+          b.groups_mask = indexes_size / GROUP_SIZE - 1;
           unsigned int start = b.els_start, bound = b.els_bound;
           b.els_start = b.els_bound = 0;
           unsigned int saved_els_num = els_num;

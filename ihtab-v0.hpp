@@ -25,9 +25,8 @@ typedef unsigned long index_ind_t;
 typedef size_t hash_t;
 
 static constexpr unsigned int GROUP_SIZE = 8;
-static constexpr size_t GROUP_BYTES = GROUP_SIZE * (1 + sizeof(ind_t));
-static constexpr unsigned char EMPTY_H7 = 0xc0;
-static constexpr unsigned char DELETED_H7 = 0x80;
+static constexpr unsigned char EMPTY_H7 = 0x80;
+static constexpr ind_t INDEX_DELETED = ~(ind_t) 0;
 static constexpr unsigned int LF_FACTOR = 1;
 static constexpr unsigned int LF_DIVISOR = 2;
 
@@ -43,8 +42,9 @@ static IHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) 
   __m128i h7_vec = _mm_set1_epi8 ((char) h7_val);
   return (uint64_t) _mm_movemask_epi8 (_mm_cmpeq_epi8 (g, h7_vec)) & 0xff;
 }
+static const __m128i EMPTY_MASK = _mm_set1_epi8 ((char) 0x80);
 static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) {
-  return (uint64_t) _mm_movemask_epi8 (_mm_and_si128 (g, _mm_slli_epi64 (g, 1))) & 0xff;
+  return (uint64_t) _mm_movemask_epi8 (_mm_and_si128 (g, EMPTY_MASK)) & 0xff;
 }
 
 #elif !defined(IHTAB_USE_SWAR) && (defined(__aarch64__) || defined(_M_ARM64))
@@ -71,7 +71,7 @@ static IHTAB_FORCE_INLINE uint64_t match_mask (group_t g, unsigned char h7_val) 
   uint64_t cmp = g ^ (SWAR_LSB * h7_val);
   return (cmp - SWAR_LSB) & ~cmp & SWAR_MSB;
 }
-static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) { return (g & SWAR_MSB) & (g << 1); }
+static IHTAB_FORCE_INLINE uint64_t match_empty (group_t g) { return g & SWAR_MSB; }
 
 #endif
 
@@ -82,7 +82,8 @@ struct hbin_t {
   index_ind_t els_bound;
   El *els;
   char *deleted;
-  unsigned char *groups;
+  unsigned char *h7;
+  ind_t *indexes;
   index_ind_t groups_mask;
 };
 
@@ -101,24 +102,25 @@ class ihtab {
     bin.els = (El *) std::malloc (els_size * sizeof (El));
     index_ind_t del_bytes = (els_size + 7) / 8;
     bin.deleted = (char *) std::calloc (del_bytes, 1);
-    index_ind_t num_groups = indexes_size / GROUP_SIZE;
-    bin.groups = (unsigned char *) std::aligned_alloc (GROUP_SIZE, num_groups * GROUP_BYTES);
-    for (index_ind_t i = 0; i < num_groups; i++)
-      std::memset (bin.groups + i * GROUP_BYTES, EMPTY_H7, GROUP_SIZE);
-    bin.groups_mask = num_groups - 1;
+    bin.h7 = (unsigned char *) std::aligned_alloc (GROUP_SIZE, indexes_size);
+    std::memset (bin.h7, EMPTY_H7, indexes_size);
+    bin.indexes = (ind_t *) std::malloc (indexes_size * sizeof (ind_t));
+    bin.groups_mask = indexes_size / GROUP_SIZE - 1;
   }
 
   ~ihtab () {
     std::free (bin.els);
     std::free (bin.deleted);
-    std::free (bin.groups);
+    std::free (bin.h7);
+    std::free (bin.indexes);
   }
 
  private:
   static void destroy_bin (hbin_t<El> &b) {
     std::free (b.els);
     std::free (b.deleted);
-    std::free (b.groups);
+    std::free (b.h7);
+    std::free (b.indexes);
   }
 
   IHTAB_FORCE_INLINE bool do_1 (hbin_t<El> &b, El &el, enum action action, El **res) {
@@ -127,23 +129,26 @@ class ihtab {
     hash_t hash = hash_fn (el);
     unsigned char h7_val = (hash >> (sizeof (hash_t) * 8 - 7)) & 0x7f;
     index_ind_t group_ind = (hash / GROUP_SIZE) & b.groups_mask;
+    index_ind_t first_deleted_slot = ~(index_ind_t) 0;
 
     for (;;) {
-      unsigned char *group_base = b.groups + group_ind * GROUP_BYTES;
-      group_t group = group_load (group_base);
-      ind_t *group_indexes = (ind_t *) (group_base + GROUP_SIZE);
+      unsigned char *group_h7 = b.h7 + group_ind * GROUP_SIZE;
+      group_t group = group_load (group_h7);
       uint64_t mmask = match_mask (group, h7_val);
       while (mmask) {
         unsigned int bit = __builtin_ctzll (mmask);
         if (mask_scale) bit /= 8;
-        ind_t el_ind = group_indexes[bit];
-        if (eq_fn (b.els[el_ind], el)) {
+        index_ind_t slot = group_ind * GROUP_SIZE + bit;
+        ind_t el_ind = b.indexes[slot];
+        if (el_ind == INDEX_DELETED) {
+          if (first_deleted_slot == ~(index_ind_t) 0) first_deleted_slot = slot;
+        } else if (eq_fn (b.els[el_ind], el)) {
           if (action != DELETE) {
             *res = &b.els[el_ind];
           } else {
             els_num--;
             b.deleted[el_ind / 8] |= 1 << (el_ind % 8);
-            group_base[bit] = DELETED_H7;
+            b.indexes[slot] = INDEX_DELETED;
           }
           return true;
         }
@@ -154,10 +159,16 @@ class ihtab {
       if (empty_mask) {
         if (action >= INSERT) {
           els_num++;
-          unsigned int bit = __builtin_ctzll (empty_mask);
-          if (mask_scale) bit /= 8;
-          group_base[bit] = h7_val;
-          group_indexes[bit] = (ind_t) b.els_bound;
+          index_ind_t slot;
+          if (first_deleted_slot != ~(index_ind_t) 0) {
+            slot = first_deleted_slot;
+          } else {
+            unsigned int bit = __builtin_ctzll (empty_mask);
+            if (mask_scale) bit /= 8;
+            slot = group_ind * GROUP_SIZE + bit;
+          }
+          b.h7[slot] = h7_val;
+          b.indexes[slot] = (ind_t) b.els_bound;
           *res = &b.els[b.els_bound];
           b.els_bound++;
         }
@@ -179,11 +190,10 @@ class ihtab {
     resize_bin.els = (El *) std::malloc (els_size * sizeof (El));
     index_ind_t del_bytes = (els_size + 7) / 8;
     resize_bin.deleted = (char *) std::calloc (del_bytes, 1);
-    index_ind_t num_groups = indexes_size / GROUP_SIZE;
-    resize_bin.groups = (unsigned char *) std::aligned_alloc (GROUP_SIZE, num_groups * GROUP_BYTES);
-    for (index_ind_t i = 0; i < num_groups; i++)
-      std::memset (resize_bin.groups + i * GROUP_BYTES, EMPTY_H7, GROUP_SIZE);
-    resize_bin.groups_mask = num_groups - 1;
+    resize_bin.h7 = (unsigned char *) std::aligned_alloc (GROUP_SIZE, indexes_size);
+    std::memset (resize_bin.h7, EMPTY_H7, indexes_size);
+    resize_bin.indexes = (ind_t *) std::malloc (indexes_size * sizeof (ind_t));
+    resize_bin.groups_mask = indexes_size / GROUP_SIZE - 1;
     resize_bin.els_bound = 0;
     index_ind_t bound = bin.els_bound;
     index_ind_t saved_els_num = els_num;

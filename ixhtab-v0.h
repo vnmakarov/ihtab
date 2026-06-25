@@ -17,9 +17,8 @@ typedef unsigned short ixht_depth_t;
 typedef unsigned int ebin_ixht_ind_t;
 
 #define IXHT_GROUP_SIZE 8
-#define IXHT_GROUP_BYTES (IXHT_GROUP_SIZE * (1 + sizeof (ixht_ind_t)))
-#define IXHT_EMPTY_H7 0xc0
-#define IXHT_DELETED_H7 0x80
+#define IXHT_EMPTY_H7 0x80
+#define IXHT_INDEX_DELETED ((ixht_ind_t) ~(unsigned) 0)
 #define IXHT_MAX_BIN_SIZE_POWER 15
 
 enum ixht_action { IXHT_FIND, IXHT_DELETE, IXHT_INSERT };
@@ -41,7 +40,7 @@ static IXHT_FORCE_INLINE unsigned int ixht_match_mask (ixht_group_t g, unsigned 
   return (unsigned int) _mm_movemask_epi8 (_mm_cmpeq_epi8 (g, h7_vec)) & 0xff;
 }
 static IXHT_FORCE_INLINE unsigned int ixht_match_empty (ixht_group_t g) {
-  return (unsigned int) _mm_movemask_epi8 (_mm_and_si128 (g, _mm_slli_epi64 (g, 1))) & 0xff;
+  return (unsigned int) _mm_movemask_epi8 (g) & 0xff;
 }
 
 #elif !defined(IXHT_USE_SWAR) && (defined(__aarch64__) || defined(_M_ARM64))
@@ -77,7 +76,7 @@ static IXHT_FORCE_INLINE uint64_t ixht_match_mask (ixht_group_t g, unsigned char
   uint64_t cmp = g ^ (IXHT_SWAR_LSB * h7_val);
   return (cmp - IXHT_SWAR_LSB) & ~cmp & IXHT_SWAR_MSB;
 }
-static IXHT_FORCE_INLINE uint64_t ixht_match_empty (ixht_group_t g) { return (g & IXHT_SWAR_MSB) & (g << 1); }
+static IXHT_FORCE_INLINE uint64_t ixht_match_empty (ixht_group_t g) { return g & IXHT_SWAR_MSB; }
 
 #endif
 
@@ -102,7 +101,8 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
     unsigned int els_start, els_bound;                                                                       \
     El *els;                                                                                                 \
     char *deleted;                                                                                           \
-    unsigned char *groups;                                                                                   \
+    unsigned char *h7;                                                                                       \
+    ixht_ind_t *indexes;                                                                                     \
     unsigned int groups_mask;                                                                                \
   };                                                                                                         \
                                                                                                              \
@@ -126,7 +126,8 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
   static IXHT_FORCE_INLINE void ixht_destroy_bin_##El (struct ebin_ixht_##El *b) {                           \
     free (b->els);                                                                                           \
     free (b->deleted);                                                                                       \
-    free (b->groups);                                                                                        \
+    free (b->h7);                                                                                            \
+    free (b->indexes);                                                                                       \
   }                                                                                                          \
                                                                                                              \
   static inline ebin_ixht_ind_t ixht_create_bin_##El (struct ixht_##El *t, unsigned int size) {              \
@@ -143,11 +144,10 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
     unsigned int del_bytes = (size + 7) / 8;                                                                 \
     b->deleted = (char *) calloc (del_bytes, 1);                                                             \
     unsigned int indexes_size = 2 * size;                                                                    \
-    unsigned int num_groups = indexes_size / IXHT_GROUP_SIZE;                                                \
-    b->groups = (unsigned char *) aligned_alloc (IXHT_GROUP_SIZE, num_groups * IXHT_GROUP_BYTES);            \
-    for (unsigned int i = 0; i < num_groups; i++)                                                            \
-      memset (b->groups + i * IXHT_GROUP_BYTES, IXHT_EMPTY_H7, IXHT_GROUP_SIZE);                             \
-    b->groups_mask = num_groups - 1;                                                                         \
+    b->h7 = (unsigned char *) aligned_alloc (IXHT_GROUP_SIZE, indexes_size);                                 \
+    memset (b->h7, IXHT_EMPTY_H7, indexes_size);                                                             \
+    b->indexes = (ixht_ind_t *) malloc (indexes_size * sizeof (ixht_ind_t));                                 \
+    b->groups_mask = indexes_size / IXHT_GROUP_SIZE - 1;                                                     \
     return ind;                                                                                              \
   }                                                                                                          \
                                                                                                              \
@@ -156,22 +156,25 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
                                                 El **res) {                                                  \
     unsigned char h7_val = (hash >> (sizeof (size_t) * 8 - 7)) & 0x7f;                                       \
     unsigned int group_ind = (unsigned int) (hash / IXHT_GROUP_SIZE) & bin->groups_mask;                     \
+    unsigned int first_deleted_slot = ~0u;                                                                   \
     for (;;) {                                                                                               \
-      unsigned char *group_base = bin->groups + group_ind * IXHT_GROUP_BYTES;                                \
-      ixht_group_t group = ixht_group_load (group_base);                                                     \
-      ixht_ind_t *group_indexes = (ixht_ind_t *) (group_base + IXHT_GROUP_SIZE);                             \
+      unsigned char *group_h7 = bin->h7 + group_ind * IXHT_GROUP_SIZE;                                       \
+      ixht_group_t group = ixht_group_load (group_h7);                                                       \
       uint64_t mmask = (uint64_t) ixht_match_mask (group, h7_val);                                           \
       while (mmask) {                                                                                        \
         unsigned int bit = __builtin_ctzll (mmask);                                                          \
         if (IXHT_MASK_SCALE) bit /= 8;                                                                       \
-        ixht_ind_t el_ind = group_indexes[bit];                                                              \
-        if (Eq (bin->els[el_ind], *el)) {                                                                    \
+        unsigned int slot = group_ind * IXHT_GROUP_SIZE + bit;                                               \
+        ixht_ind_t el_ind = bin->indexes[slot];                                                              \
+        if (el_ind == IXHT_INDEX_DELETED) {                                                                  \
+          if (first_deleted_slot == ~0u) first_deleted_slot = slot;                                          \
+        } else if (Eq (bin->els[el_ind], *el)) {                                                             \
           if (action != IXHT_DELETE) {                                                                       \
             *res = &bin->els[el_ind];                                                                        \
           } else {                                                                                           \
             t->els_num--;                                                                                    \
             bin->deleted[el_ind / 8] |= 1 << (el_ind % 8);                                                   \
-            group_base[bit] = IXHT_DELETED_H7;                                                               \
+            bin->indexes[slot] = IXHT_INDEX_DELETED;                                                         \
           }                                                                                                  \
           return true;                                                                                       \
         }                                                                                                    \
@@ -181,10 +184,16 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
       if (emask) {                                                                                           \
         if (action >= IXHT_INSERT) {                                                                         \
           t->els_num++;                                                                                      \
-          unsigned int bit = __builtin_ctzll (emask);                                                        \
-          if (IXHT_MASK_SCALE) bit /= 8;                                                                     \
-          group_base[bit] = h7_val;                                                                          \
-          group_indexes[bit] = (ixht_ind_t) bin->els_bound;                                                  \
+          unsigned int slot;                                                                                 \
+          if (first_deleted_slot != ~0u) {                                                                   \
+            slot = first_deleted_slot;                                                                       \
+          } else {                                                                                           \
+            unsigned int bit = __builtin_ctzll (emask);                                                      \
+            if (IXHT_MASK_SCALE) bit /= 8;                                                                   \
+            slot = group_ind * IXHT_GROUP_SIZE + bit;                                                        \
+          }                                                                                                  \
+          bin->h7[slot] = h7_val;                                                                            \
+          bin->indexes[slot] = (ixht_ind_t) bin->els_bound;                                                  \
           *res = &bin->els[bin->els_bound];                                                                  \
           bin->els_bound++;                                                                                  \
         }                                                                                                    \
@@ -200,9 +209,8 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
     for (;;) {                                                                                               \
       struct ebin_ixht_##El *new_bin = &t->bins[new_ind];                                                    \
       struct ebin_ixht_##El *bin = &t->bins[bin_ind];                                                        \
-      unsigned int num_groups = bin->groups_mask + 1;                                                        \
-      for (unsigned int gi = 0; gi < num_groups; gi++)                                                       \
-        memset (bin->groups + gi * IXHT_GROUP_BYTES, IXHT_EMPTY_H7, IXHT_GROUP_SIZE);                        \
+      unsigned int indexes_size = (bin->groups_mask + 1) * IXHT_GROUP_SIZE;                                  \
+      memset (bin->h7, IXHT_EMPTY_H7, indexes_size);                                                         \
       ixht_hash_t split_mask = (ixht_hash_t) 1 << bin->depth;                                                \
       new_bin->depth = ++bin->depth;                                                                         \
       if (bin->depth > t->max_depth) {                                                                       \
@@ -301,11 +309,10 @@ static inline void ixht_get_params (size_t size, size_t *bn, size_t *bp2, size_t
           unsigned int del_bytes = (els_size + 7) / 8;                                                       \
           b->deleted = (char *) calloc (del_bytes, 1);                                                       \
           b->els = (El *) realloc (b->els, els_size * sizeof (El));                                          \
-          unsigned int num_groups = indexes_size / IXHT_GROUP_SIZE;                                          \
-          b->groups = (unsigned char *) realloc (b->groups, num_groups * IXHT_GROUP_BYTES);                  \
-          for (unsigned int gi = 0; gi < num_groups; gi++)                                                   \
-            memset (b->groups + gi * IXHT_GROUP_BYTES, IXHT_EMPTY_H7, IXHT_GROUP_SIZE);                      \
-          b->groups_mask = num_groups - 1;                                                                   \
+          b->h7 = (unsigned char *) realloc (b->h7, indexes_size);                                           \
+          memset (b->h7, IXHT_EMPTY_H7, indexes_size);                                                       \
+          b->indexes = (ixht_ind_t *) realloc (b->indexes, indexes_size * sizeof (ixht_ind_t));              \
+          b->groups_mask = indexes_size / IXHT_GROUP_SIZE - 1;                                               \
           unsigned int start = b->els_start, bound = b->els_bound;                                           \
           b->els_start = b->els_bound = 0;                                                                   \
           unsigned int saved = t->els_num;                                                                   \
