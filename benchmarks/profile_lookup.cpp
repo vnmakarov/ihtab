@@ -1,4 +1,4 @@
-// profile_lookup.cpp — focused profiling harness for ihtab vs absl IntLookup
+// profile_lookup.cpp — focused profiling harness for ihtab vs absl IntLookup (searching existing keys)
 // Usage: ./profile_lookup --absl | --ihtab | --both
 // Designed for: perf stat ./profile_lookup --ihtab
 //               valgrind --tool=cachegrind ./profile_lookup --both
@@ -117,12 +117,12 @@ int main (int argc, char *argv[]) {
   printf ("N=%d, ITERS=%d, total ops=%d\n", N, ITERS, N * ITERS);
 
   if (run_absl) {
-    printf ("Profiling absl::flat_hash_map IntLookup...\n");
+    printf ("Profiling absl::flat_hash_map IntLookup (searching existing keys)...\n");
     profile_absl (keys);
     printf ("  done (sink=%zu)\n", (size_t) do_not_optimize);
   }
   if (run_ihtab) {
-    printf ("Profiling ihtab IntLookup...\n");
+    printf ("Profiling ihtab IntLookup (searching existing keys)...\n");
     profile_ihtab (keys);
     printf ("  done (sink=%zu)\n", (size_t) do_not_optimize);
   }

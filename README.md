@@ -20,17 +20,23 @@ groups and uses SIMD to speed up the search.  Within each group the
 probing is linear.
 
 Both tables here take a path different from the swiss table: a compact
-array of 8-bit tags (7-bit hash fingerprint + 1 empty/deleted bit) is
-probed with SIMD; the actual elements live in a **separate dense
-array** and are referenced by small integer indices.  For linear
-probing at 50 % load the expected average probe count is ~1 probe vs
-~4 for a 7/8-loaded Swiss table for successful search and ~2 vs 32 for
-unsuccessful search.  Iteration walks the dense element array with a
-deleted-bit check — no empty-slot gaps.
+array of 8-bit tags (7-bit hash fingerprint) is probed with SIMD; the
+actual elements live in a **separate dense array** and are referenced
+by small integer indices.  Tags and indices are interleaved in groups
+of 8 (8 tag bytes followed by 8 indices) so that a single group lookup
+hits one contiguous cache region.  Empty slots use tag `0xc0` (both
+top bits set); deleted slots use `0x80` (top bit only); valid tags are
+`0x00`–`0x7f`.  For linear probing at 50 % load the expected average
+probe count is ~1 probe vs ~4 for a 7/8-loaded Swiss table for
+successful search and ~2 vs 32 for unsuccessful search.  Iteration
+walks the dense element array with a deleted-bit check — no empty-slot
+gaps.
 
 ### ihtab
 
 - Single contiguous element array, 32-bit slot indices.
+- Interleaved groups: each group is 8 h7 tag bytes + 8 × 4-byte
+  indices = 40 bytes.
 - 50 % load factor; rebuilds the whole table when full.
 - Fastest average lookup; suits general-purpose use.
 
@@ -39,10 +45,30 @@ deleted-bit check — no empty-slot gaps.
 - [Extendible hash table](https://en.wikipedia.org/wiki/Extendible_hashing)
 - Directory of bins, each bin is an ihtab with 16-bit indices (max 2^15
   elements per bin).
+- Interleaved groups: 8 h7 tag bytes + 8 × 2-byte indices = 24 bytes.
 - Only the full bin is split on overflow; the rest of the table is
   untouched.
 - Trades a directory indirection for bounded rebuild latency; suits large
   tables with latency-sensitive workloads.
+
+### Changes from v0
+
+The original version (v0, kept as `ihtab-v0.h` / `ihtab-v0.hpp` etc.
+for benchmarking) stored h7 tags and slot indices in **separate
+arrays**.  The current version makes two improvements:
+
+- **Interleaved groups.**  Each group packs 8 h7 bytes followed by 8
+  indices into a single contiguous block.  A lookup that matches an h7
+  tag can read the corresponding index from the same cache line instead
+  of chasing a pointer to a separate array.  At 20M keys this reduces
+  cycles by ~30 % vs v0.
+
+- **Tag-based deletion.**  v0 used a sentinel index value
+  (`INDEX_DELETED`) to mark deleted slots, requiring an extra compare
+  after every h7 match.  The current version encodes deletion in the
+  tag itself (`DELETED_H7 = 0x80`) and raises the empty tag to `0xc0`.
+  Deleted slots never appear in the h7 match mask, eliminating the
+  branch from the hot loop.
 
 More information about the design can be found in this [blog post](https://vnmakarov.github.io/data%20structures/c/c++/open-source/2026/06/23/two-indexed-hash-tables.html).
 
@@ -193,3 +219,41 @@ Geometric mean on Apple M4 across all benchmarks:
 | C++ ihtab      |   3.7 |  0.631x |
 | C ixhtab       |   5.3 |  0.889x |
 | C ihtab        |   3.6 |  0.601x |
+
+## Profile
+
+```sh
+make profile            # perf-stat comparison: ihtab vs absl vs ihtab-v0
+```
+
+Runs `perf stat` on IntLookup (searching existing keys) for two table sizes (1M and 20M keys)
+comparing the current interleaved-group layout against
+`absl::flat_hash_map` and the previous v0 layout (separate h7 and
+index arrays).  Results on AMD 9900x:
+
+### N=1M (1 000 000 keys, 10 iterations)
+
+| Metric                | absl            | ihtab           | ihtab-v0        | Best                     |
+|-----------------------|-----------------|-----------------|-----------------|--------------------------|
+| Cycles                | 758.1M          | 344.7M          | 331.3M          | **ihtab-v0** 56% fewer   |
+| Instructions          | 498.8M          | 440.9M          | 566.8M          | **ihtab** 22% fewer      |
+| IPC                   | 0.66            | 1.28            | 1.71            | **ihtab-v0** 160% higher |
+| L1-dcache miss rate   | 21.3%           | 24.6%           | 15.7%           | **ihtab-v0** 36% fewer   |
+| Branch misses         | 722.2K (1.51%)  | 387.2K (0.69%)  | 360.0K (0.70%)  | **ihtab-v0** 50% fewer   |
+| dTLB miss rate        | 27.9%           | 5.1%            | 2.7%            | **ihtab-v0** 90% fewer   |
+
+### N=20M (20 000 000 keys, 10 iterations)
+
+| Metric                | absl            | ihtab           | ihtab-v0        | Best                    |
+|-----------------------|-----------------|-----------------|-----------------|-------------------------|
+| Cycles                | 37.2B           | 30.6B           | 44.7B           | **ihtab** 32% fewer     |
+| Instructions          | 10.6B           | 10.3B           | 11.9B           | **ihtab** 14% fewer     |
+| IPC                   | 0.29            | 0.34            | 0.27            | **ihtab** 26% higher    |
+| L1-dcache miss rate   | 19.6%           | 21.2%           | 14.9%           | **ihtab-v0** 30% fewer  |
+| Branch misses         | 13.0M (1.46%)   | 5.2M (0.46%)    | 5.2M (0.47%)    | **ihtab** 60% fewer     |
+| dTLB miss rate        | 85.9%           | 91.4%           | 89.5%           | **absl** 6% fewer       |
+
+At 1M keys the table fits in cache — both ihtab variants dominate on
+cycles and TLB.  At 20M keys the working set exceeds cache and the
+interleaved layout (ihtab) wins on cycles because each group lookup
+touches one contiguous region instead of two separate arrays.
