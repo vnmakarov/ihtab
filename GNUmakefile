@@ -44,9 +44,9 @@ profile:
 	set -- $$labels; \
 	for n in $$sizes; do \
 	  lbl=$$1; shift; \
-	  $(CXX) $(CXXFLAGS) -DPROFILE_N=$$n $(PROFILE_SRC) -o benchmarks/profile_$$lbl; \
-	  $(CXX) $(CXXFLAGS) -DPROFILE_N=$$n -DUSE_V0 $(PROFILE_SRC) -o benchmarks/profile_$${lbl}_v0; \
-	  benchmarks/profile_table.sh benchmarks/profile_$$lbl benchmarks/profile_$${lbl}_v0 \
+	  $(CXX) $(CXXFLAGS) -DPROFILE_N=$$n $(PROFILE_SRC) -o benchmarks/prof_$$lbl; \
+	  $(CXX) $(CXXFLAGS) -DPROFILE_N=$$n -DUSE_V0 $(PROFILE_SRC) -o benchmarks/prof_$${lbl}_v0; \
+	  benchmarks/profile_table.sh benchmarks/prof_$$lbl benchmarks/prof_$${lbl}_v0 \
 	    "N=$$lbl ($$n keys, 10 iterations)"; \
 	done
 
@@ -77,4 +77,4 @@ uninstall:
 	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.h     $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
 
 clean:
-	$(RM) $(BENCH) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) benchmarks/profile_* $(TEST_BINS)
+	$(RM) $(BENCH) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) benchmarks/prof_* $(TEST_BINS)
