@@ -4,8 +4,13 @@
 #include <algorithm>
 #include <vector>
 
+#ifdef USE_V0
+#include "ihtab-v0.hpp"
+#include "ixhtab-v0.hpp"
+#else
 #include "ihtab.hpp"
 #include "ixhtab.hpp"
+#endif
 
 struct Entry {
   uint32_t key;

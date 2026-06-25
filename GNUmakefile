@@ -14,7 +14,7 @@ BENCH_O = benchmarks/bench_c.o
 
 TEST_CXXFLAGS = -I. -std=c++20 -O3 -Wall -Wpedantic
 TEST_CFLAGS   = -I. -std=c11 -O3 -Wall
-TEST_BINS     = tests/test tests/test_c
+TEST_BINS     = tests/test tests/test_c tests/test_v0 tests/test_c_v0
 
 .PHONY: bench test install uninstall clean
 
@@ -35,6 +35,12 @@ tests/test: tests/test.cpp ihtab.hpp ixhtab.hpp
 
 tests/test_c: tests/test_c.c ihtab.h ixhtab.h
 	$(CC) $(TEST_CFLAGS) $< -o $@
+
+tests/test_v0: tests/test.cpp ihtab-v0.hpp ixhtab-v0.hpp
+	$(CXX) $(TEST_CXXFLAGS) -DUSE_V0 $< -o $@
+
+tests/test_c_v0: tests/test_c.c ihtab-v0.h ixhtab-v0.h
+	$(CC) $(TEST_CFLAGS) -DUSE_V0 $< -o $@
 
 install:
 	install -d $(DESTDIR)$(INCLUDEDIR)
