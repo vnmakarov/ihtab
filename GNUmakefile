@@ -11,6 +11,8 @@ BENCH   = benchmarks/bench
 SRC     = benchmarks/bench.cpp
 BENCH_C = benchmarks/bench_c.c
 BENCH_O = benchmarks/bench_c.o
+BENCH_V0_O = benchmarks/bench_c_v0.o
+BENCH_CPP_V0_O = benchmarks/bench_cpp_v0.o
 
 TEST_CXXFLAGS = -I. -std=c++20 -O3 -Wall -Wpedantic
 TEST_CFLAGS   = -I. -std=c11 -O3 -Wall
@@ -24,8 +26,14 @@ bench: $(BENCH)
 $(BENCH_O): $(BENCH_C) benchmarks/bench_c.h ihtab.h ixhtab.h vmum.h
 	$(CC) $(CFLAGS) -c $(BENCH_C) -o $(BENCH_O)
 
-$(BENCH): $(SRC) $(BENCH_O) ihtab.hpp ixhtab.hpp vmum.h benchmarks/bench_c.h
-	$(CXX) $(CXXFLAGS) $(SRC) $(BENCH_O) -o $(BENCH)
+$(BENCH_V0_O): $(BENCH_C) benchmarks/bench_c.h ihtab-v0.h ixhtab-v0.h vmum.h
+	$(CC) $(CFLAGS) -DUSE_V0 -c $(BENCH_C) -o $(BENCH_V0_O)
+
+$(BENCH_CPP_V0_O): $(SRC) benchmarks/bench_c.h ihtab-v0.hpp ixhtab-v0.hpp vmum.h
+	$(CXX) $(CXXFLAGS) -DUSE_V0 -c $(SRC) -o $(BENCH_CPP_V0_O)
+
+$(BENCH): $(SRC) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) ihtab.hpp ixhtab.hpp vmum.h benchmarks/bench_c.h
+	$(CXX) $(CXXFLAGS) $(SRC) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) -o $(BENCH)
 
 test: $(TEST_BINS)
 	@for t in $(TEST_BINS); do echo "=== $$t ==="; ./$$t || exit 1; done
@@ -54,4 +62,4 @@ uninstall:
 	$(RM) $(DESTDIR)$(INCLUDEDIR)/ihtab.h     $(DESTDIR)$(INCLUDEDIR)/ixhtab.h
 
 clean:
-	$(RM) $(BENCH) $(BENCH_O) $(TEST_BINS)
+	$(RM) $(BENCH) $(BENCH_O) $(BENCH_V0_O) $(BENCH_CPP_V0_O) $(TEST_BINS)

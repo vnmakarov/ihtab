@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#ifndef USE_V0
 // Shim: absl::flat_hash_map
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -23,15 +24,23 @@
 #include "absl/hash/internal/low_level_hash.cc"
 #include "absl/container/flat_hash_map.h"
 #pragma GCC diagnostic pop
+#endif
 
 extern "C" {
 #include "vmum.h"
 }
 #undef static_assert
 
+#ifdef USE_V0
+#include "ihtab-v0.hpp"
+#include "ixhtab-v0.hpp"
+#else
 #include "ihtab.hpp"
 #include "ixhtab.hpp"
 #include "bench_c.h"
+#endif
+
+#ifndef USE_V0
 
 static volatile size_t do_not_optimize;
 static bool include_string = false;
@@ -112,23 +121,6 @@ static std::vector<char *> gen_large_keys (int n) {
   return keys;
 }
 
-// Large value type (~96 bytes, matches Go's LargeStruct).
-struct large_value_t {
-  char data[64];
-  int value;
-  char name[24];
-  bool active;
-};
-
-static large_value_t make_large_value (int i) {
-  large_value_t v{};
-  memset (v.data, (char) (i % 256), sizeof (v.data));
-  v.value = i;
-  snprintf (v.name, sizeof (v.name), "item_%d", i);
-  v.active = (i % 2 == 0);
-  return v;
-}
-
 // Hash wrappers using vmum.
 struct int_hash {
   using is_avalanching = void;
@@ -170,10 +162,33 @@ static std::vector<result> results;
 
 static void record (const char *impl, const char *bench, const char *sz, int n, double ns) {
   results.push_back ({impl, bench, sz, n, ns});
-  printf ("  %-11s %-22s %-6s %10.1f ns/op\n", impl, bench, sz, ns);
+  printf ("  %-15s %-22s %-6s %10.1f ns/op\n", impl, bench, sz, ns);
+}
+
+#endif /* !USE_V0 */
+
+// Large value type (~96 bytes, matches Go's LargeStruct).
+struct large_value_t {
+  char data[64];
+  int value;
+  char name[24];
+  bool active;
+};
+
+static large_value_t make_large_value (int i) {
+  large_value_t v{};
+  memset (v.data, (char) (i % 256), sizeof (v.data));
+  v.value = i;
+  snprintf (v.name, sizeof (v.name), "item_%d", i);
+  v.active = (i % 2 == 0);
+  return v;
 }
 
 // ===== ihtab / ixhtab entry types =====
+
+#ifdef USE_V0
+namespace v0_entries {
+#endif
 
 struct ihtab_int_entry {
   uint64_t key;
@@ -251,6 +266,228 @@ struct ixhtab_lv_eq {
   bool operator() (const ixhtab_lv_entry &a, const ixhtab_lv_entry &b) const { return a.key == b.key; }
 };
 using ixhtab_lv_t = ixht::ixhtab<ixhtab_lv_entry, ixhtab_lv_hash, ixhtab_lv_eq>;
+
+#ifdef USE_V0
+}  // namespace v0_entries
+using namespace v0_entries;
+
+/* ===== C++ v0 wrapper macros ===== */
+
+#define GEN_CPP_INT(cpfx, Table, NS, E)                                \
+  size_t cpfx##_int_insert (const uint64_t *keys, int n) {             \
+    Table m (8);                                                        \
+    for (int i = 0; i < n; i++) {                                       \
+      E e{keys[i], i}; E *r;                                           \
+      if (!m.perform (e, NS::INSERT, &r)) *r = e;                       \
+    }                                                                   \
+    return m.els_count ();                                               \
+  }                                                                     \
+  void *cpfx##_int_build (const uint64_t *keys, int n) {                \
+    auto *t = new Table (8);                                             \
+    for (int i = 0; i < n; i++) {                                       \
+      E e{keys[i], i}; E *r;                                           \
+      if (!t->perform (e, NS::INSERT, &r)) *r = e;                      \
+    }                                                                   \
+    return t;                                                           \
+  }                                                                     \
+  int cpfx##_int_lookup (void *h, const uint64_t *keys, int n) {        \
+    auto *t = (Table *) h; int s = 0;                                   \
+    for (int i = 0; i < n; i++) {                                       \
+      E e{keys[i], 0}; E *r;                                           \
+      if (t->perform (e, NS::FIND, &r)) s += r->value;                  \
+    }                                                                   \
+    return s;                                                           \
+  }                                                                     \
+  size_t cpfx##_int_delete (const uint64_t *keys, int n) {              \
+    Table m (8);                                                        \
+    for (int i = 0; i < n; i++) {                                       \
+      E e{keys[i], i}; E *r;                                           \
+      if (!m.perform (e, NS::INSERT, &r)) *r = e;                       \
+    }                                                                   \
+    for (int i = 0; i < n; i++) {                                       \
+      E e{keys[i], 0}; E *r;                                           \
+      m.perform (e, NS::DELETE, &r);                                     \
+    }                                                                   \
+    return m.els_count ();                                               \
+  }                                                                     \
+  int cpfx##_int_iterate (void *h) {                                    \
+    auto *t = (Table *) h; int s = 0;                                   \
+    for (auto &e : *t) s += e.value;                                     \
+    return s;                                                           \
+  }                                                                     \
+  void cpfx##_int_free (void *h) { delete (Table *) h; }
+
+#define GEN_CPP_STR(cpfx, Table, NS, E)                                      \
+  size_t cpfx##_str_insert (char *const *keys, int n) {                      \
+    Table m (8);                                                              \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], i}; E *r;                                                 \
+      if (!m.perform (e, NS::INSERT, &r)) *r = e;                             \
+    }                                                                         \
+    return m.els_count ();                                                     \
+  }                                                                           \
+  void *cpfx##_str_build (char *const *keys, int n) {                         \
+    auto *t = new Table (8);                                                   \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], i}; E *r;                                                 \
+      if (!t->perform (e, NS::INSERT, &r)) *r = e;                            \
+    }                                                                         \
+    return t;                                                                 \
+  }                                                                           \
+  int cpfx##_str_lookup (void *h, char *const *keys, int n) {                 \
+    auto *t = (Table *) h; int s = 0;                                         \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], 0}; E *r;                                                 \
+      if (t->perform (e, NS::FIND, &r)) s += r->value;                        \
+    }                                                                         \
+    return s;                                                                 \
+  }                                                                           \
+  size_t cpfx##_str_delete (char *const *keys, int n) {                       \
+    Table m (8);                                                              \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], i}; E *r;                                                 \
+      if (!m.perform (e, NS::INSERT, &r)) *r = e;                             \
+    }                                                                         \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], 0}; E *r;                                                 \
+      m.perform (e, NS::DELETE, &r);                                           \
+    }                                                                         \
+    return m.els_count ();                                                     \
+  }                                                                           \
+  int cpfx##_str_iterate (void *h) {                                          \
+    auto *t = (Table *) h; int s = 0;                                         \
+    for (auto &e : *t) s += e.value;                                           \
+    return s;                                                                 \
+  }                                                                           \
+  void cpfx##_str_free (void *h) { delete (Table *) h; }                      \
+  size_t cpfx##_str_mixed (char *const *keys, int n) {                        \
+    Table m (8);                                                              \
+    for (int j = 0; j < n; j++) {                                             \
+      int op = j % 10; E e{keys[j], j}; E *r;                                \
+      if (op < 7) { if (!m.perform (e, NS::INSERT, &r)) *r = e; }            \
+      else if (op < 9) m.perform (e, NS::FIND, &r);                           \
+      else m.perform (e, NS::DELETE, &r);                                      \
+    }                                                                         \
+    return m.els_count ();                                                     \
+  }                                                                           \
+  int cpfx##_str_collision (char *const *keys, int n) {                       \
+    Table m (8);                                                              \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], i}; E *r;                                                 \
+      if (!m.perform (e, NS::INSERT, &r)) *r = e;                             \
+    }                                                                         \
+    int s = 0;                                                                \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], 0}; E *r;                                                 \
+      if (m.perform (e, NS::FIND, &r)) s += r->value;                         \
+    }                                                                         \
+    return s;                                                                 \
+  }                                                                           \
+  size_t cpfx##_str_growth (char *const *keys, int n, int prealloc) {         \
+    Table m (prealloc ? (unsigned) n : 8);                                     \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], i}; E *r;                                                 \
+      if (!m.perform (e, NS::INSERT, &r)) *r = e;                             \
+    }                                                                         \
+    return m.els_count ();                                                     \
+  }
+
+#define GEN_CPP_LV(cpfx, Table, NS, E)                                       \
+  size_t cpfx##_lv_insert (const uint64_t *keys, int n) {                     \
+    Table m (8);                                                              \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], make_large_value (i)}; E *r;                              \
+      if (!m.perform (e, NS::INSERT, &r)) *r = e;                             \
+    }                                                                         \
+    return m.els_count ();                                                     \
+  }                                                                           \
+  void *cpfx##_lv_build (const uint64_t *keys, int n) {                       \
+    auto *t = new Table (8);                                                   \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], make_large_value (i)}; E *r;                              \
+      if (!t->perform (e, NS::INSERT, &r)) *r = e;                            \
+    }                                                                         \
+    return t;                                                                 \
+  }                                                                           \
+  int cpfx##_lv_lookup (void *h, const uint64_t *keys, int n) {               \
+    auto *t = (Table *) h; int s = 0;                                         \
+    for (int i = 0; i < n; i++) {                                             \
+      E e{keys[i], {}}; E *r;                                                \
+      if (t->perform (e, NS::FIND, &r)) s += r->value.value;                  \
+    }                                                                         \
+    return s;                                                                 \
+  }                                                                           \
+  void cpfx##_lv_free (void *h) { delete (Table *) h; }
+
+GEN_CPP_INT (cpp_ihtab_v0, ihtab_int_t, iht, ihtab_int_entry)
+GEN_CPP_INT (cpp_ixhtab_v0, ixhtab_int_t, ixht, ixhtab_int_entry)
+GEN_CPP_STR (cpp_ihtab_v0, ihtab_str_t, iht, ihtab_str_entry)
+GEN_CPP_STR (cpp_ixhtab_v0, ixhtab_str_t, ixht, ixhtab_str_entry)
+GEN_CPP_LV (cpp_ihtab_v0, ihtab_lv_t, iht, ihtab_lv_entry)
+GEN_CPP_LV (cpp_ixhtab_v0, ixhtab_lv_t, ixht, ixhtab_lv_entry)
+
+#else /* !USE_V0 */
+
+// ===== Wrapper-based implementation tables =====
+
+struct int_impl {
+  const char *name;
+  size_t (*insert) (const uint64_t *, int);
+  void *(*build) (const uint64_t *, int);
+  int (*lookup) (void *, const uint64_t *, int);
+  size_t (*del) (const uint64_t *, int);
+  int (*iterate) (void *);
+  void (*free_fn) (void *);
+};
+
+struct str_impl {
+  const char *name;
+  size_t (*insert) (char *const *, int);
+  void *(*build) (char *const *, int);
+  int (*lookup) (void *, char *const *, int);
+  size_t (*del) (char *const *, int);
+  int (*iterate) (void *);
+  void (*free_fn) (void *);
+  size_t (*mixed) (char *const *, int);
+  int (*collision) (char *const *, int);
+  size_t (*growth) (char *const *, int, int);
+};
+
+struct lv_impl {
+  const char *name;
+  size_t (*insert) (const uint64_t *, int);
+  void *(*build) (const uint64_t *, int);
+  int (*lookup) (void *, const uint64_t *, int);
+  void (*free_fn) (void *);
+};
+
+#define INT_IMPL(label, pfx)                                                                        \
+  {label, pfx##_int_insert, pfx##_int_build, pfx##_int_lookup, pfx##_int_delete, pfx##_int_iterate, \
+   pfx##_int_free}
+
+#define STR_IMPL(label, pfx)                                                                        \
+  {label, pfx##_str_insert, pfx##_str_build, pfx##_str_lookup, pfx##_str_delete, pfx##_str_iterate, \
+   pfx##_str_free, pfx##_str_mixed, pfx##_str_collision, pfx##_str_growth}
+
+#define LV_IMPL(label, pfx) {label, pfx##_lv_insert, pfx##_lv_build, pfx##_lv_lookup, pfx##_lv_free}
+
+static const int_impl int_impls[] = {
+  INT_IMPL ("C ixhtab", c_ixhtab),         INT_IMPL ("C ihtab", c_ihtab),
+  INT_IMPL ("C ixhtab-v0", c_ixhtab_v0),   INT_IMPL ("C ihtab-v0", c_ihtab_v0),
+  INT_IMPL ("C++ ixhtab-v0", cpp_ixhtab_v0), INT_IMPL ("C++ ihtab-v0", cpp_ihtab_v0),
+};
+
+static const str_impl str_impls[] = {
+  STR_IMPL ("C ixhtab", c_ixhtab),         STR_IMPL ("C ihtab", c_ihtab),
+  STR_IMPL ("C ixhtab-v0", c_ixhtab_v0),   STR_IMPL ("C ihtab-v0", c_ihtab_v0),
+  STR_IMPL ("C++ ixhtab-v0", cpp_ixhtab_v0), STR_IMPL ("C++ ihtab-v0", cpp_ihtab_v0),
+};
+
+static const lv_impl lv_impls[] = {
+  LV_IMPL ("C ixhtab", c_ixhtab),         LV_IMPL ("C ihtab", c_ihtab),
+  LV_IMPL ("C ixhtab-v0", c_ixhtab_v0),   LV_IMPL ("C ihtab-v0", c_ihtab_v0),
+  LV_IMPL ("C++ ixhtab-v0", cpp_ixhtab_v0), LV_IMPL ("C++ ihtab-v0", cpp_ihtab_v0),
+};
 
 // ===== Core benchmarks (Int/Str Insert/Lookup/Delete/Iteration) =====
 
@@ -422,39 +659,18 @@ static void bench_core (int n, const char *sz) {
             },
             n));
 
-  // --- C ixhtab int ---
-  record ("C ixhtab", "IntInsert", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_int_insert (ikeys.data (), n); }, n));
-
-  void *cxi_i = c_ixhtab_int_build (ikeys.data (), n);
-
-  record ("C ixhtab", "IntLookup", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_int_lookup (cxi_i, ikeys.data (), n); }, n));
-
-  record ("C ixhtab", "IntDelete", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_int_delete (ikeys.data (), n); }, n));
-
-  record ("C ixhtab", "IntIteration", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_int_iterate (cxi_i); }, n));
-
-  c_ixhtab_int_free (cxi_i);
-
-  // --- C ihtab int ---
-  record ("C ihtab", "IntInsert", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_int_insert (ikeys.data (), n); }, n));
-
-  void *ci_i = c_ihtab_int_build (ikeys.data (), n);
-
-  record ("C ihtab", "IntLookup", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_int_lookup (ci_i, ikeys.data (), n); }, n));
-
-  record ("C ihtab", "IntDelete", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_int_delete (ikeys.data (), n); }, n));
-
-  record ("C ihtab", "IntIteration", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_int_iterate (ci_i); }, n));
-
-  c_ihtab_int_free (ci_i);
+  for (auto &impl : int_impls) {
+    record (impl.name, "IntInsert", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.insert (ikeys.data (), n); }, n));
+    void *h = impl.build (ikeys.data (), n);
+    record (impl.name, "IntLookup", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.lookup (h, ikeys.data (), n); }, n));
+    record (impl.name, "IntDelete", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.del (ikeys.data (), n); }, n));
+    record (impl.name, "IntIteration", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.iterate (h); }, n));
+    impl.free_fn (h);
+  }
 
   if (!include_string) return;
   auto skeys = gen_str_keys (n);
@@ -624,29 +840,18 @@ static void bench_core (int n, const char *sz) {
             },
             n));
 
-  // --- C ixhtab str ---
-  record ("C ixhtab", "StrInsert", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_insert (skeys.data (), n); }, n));
-  void *cxs = c_ixhtab_str_build (skeys.data (), n);
-  record ("C ixhtab", "StrLookup", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_lookup (cxs, skeys.data (), n); }, n));
-  record ("C ixhtab", "StrDelete", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_delete (skeys.data (), n); }, n));
-  record ("C ixhtab", "StrIteration", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_iterate (cxs); }, n));
-  c_ixhtab_str_free (cxs);
-
-  // --- C ihtab str ---
-  record ("C ihtab", "StrInsert", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_insert (skeys.data (), n); }, n));
-  void *cis = c_ihtab_str_build (skeys.data (), n);
-  record ("C ihtab", "StrLookup", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_lookup (cis, skeys.data (), n); }, n));
-  record ("C ihtab", "StrDelete", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_delete (skeys.data (), n); }, n));
-  record ("C ihtab", "StrIteration", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_iterate (cis); }, n));
-  c_ihtab_str_free (cis);
+  for (auto &impl : str_impls) {
+    record (impl.name, "StrInsert", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.insert (skeys.data (), n); }, n));
+    void *h = impl.build (skeys.data (), n);
+    record (impl.name, "StrLookup", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.lookup (h, skeys.data (), n); }, n));
+    record (impl.name, "StrDelete", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.del (skeys.data (), n); }, n));
+    record (impl.name, "StrIteration", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.iterate (h); }, n));
+    impl.free_fn (h);
+  }
 }
 
 // ===== MixedOps: 70% insert, 20% lookup, 10% delete on str keys =====
@@ -711,10 +916,9 @@ static void bench_mixed (int n, const char *sz) {
             },
             n));
 
-  record ("C ixhtab", "MixedOps", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_mixed (keys.data (), n); }, n));
-  record ("C ihtab", "MixedOps", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_mixed (keys.data (), n); }, n));
+  for (auto &impl : str_impls)
+    record (impl.name, "MixedOps", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.mixed (keys.data (), n); }, n));
 }
 
 // ===== RandomAccess: lookup with random-pattern keys =====
@@ -775,15 +979,12 @@ static void bench_random_access (int n, const char *sz) {
             },
             n));
 
-  void *cxra = c_ixhtab_str_build (keys.data (), n);
-  record ("C ixhtab", "RandomAccess", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_lookup (cxra, keys.data (), n); }, n));
-  c_ixhtab_str_free (cxra);
-
-  void *cira = c_ihtab_str_build (keys.data (), n);
-  record ("C ihtab", "RandomAccess", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_lookup (cira, keys.data (), n); }, n));
-  c_ihtab_str_free (cira);
+  for (auto &impl : str_impls) {
+    void *h = impl.build (keys.data (), n);
+    record (impl.name, "RandomAccess", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.lookup (h, keys.data (), n); }, n));
+    impl.free_fn (h);
+  }
 }
 
 // ===== CacheMiss: lookup keys guaranteed absent (int keys, bit flip) =====
@@ -846,15 +1047,12 @@ static void bench_cache_miss (int n, const char *sz) {
             },
             n));
 
-  void *cxcm = c_ixhtab_int_build (keys.data (), n);
-  record ("C ixhtab", "CacheMiss", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_int_lookup (cxcm, missing.data (), n); }, n));
-  c_ixhtab_int_free (cxcm);
-
-  void *cicm = c_ihtab_int_build (keys.data (), n);
-  record ("C ihtab", "CacheMiss", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_int_lookup (cicm, missing.data (), n); }, n));
-  c_ihtab_int_free (cicm);
+  for (auto &impl : int_impls) {
+    void *h = impl.build (keys.data (), n);
+    record (impl.name, "CacheMiss", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.lookup (h, missing.data (), n); }, n));
+    impl.free_fn (h);
+  }
 }
 
 // ===== HashCollisions: collision-prone str keys (insert + lookup) =====
@@ -915,10 +1113,9 @@ static void bench_collisions (int n, const char *sz) {
             },
             n));
 
-  record ("C ixhtab", "HashCollision", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_collision (keys.data (), n); }, n));
-  record ("C ihtab", "HashCollision", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_collision (keys.data (), n); }, n));
+  for (auto &impl : str_impls)
+    record (impl.name, "HashCollision", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.collision (keys.data (), n); }, n));
 }
 
 // ===== LargeKey: insert + lookup with 200-400 char keys =====
@@ -1014,19 +1211,14 @@ static void bench_large_key (int n, const char *sz) {
             },
             n));
 
-  record ("C ixhtab", "LargeKeyIns", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_insert (keys.data (), n); }, n));
-  void *cxlk = c_ixhtab_str_build (keys.data (), n);
-  record ("C ixhtab", "LargeKeyGet", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_lookup (cxlk, keys.data (), n); }, n));
-  c_ixhtab_str_free (cxlk);
-
-  record ("C ihtab", "LargeKeyIns", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_insert (keys.data (), n); }, n));
-  void *cilk = c_ihtab_str_build (keys.data (), n);
-  record ("C ihtab", "LargeKeyGet", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_lookup (cilk, keys.data (), n); }, n));
-  c_ihtab_str_free (cilk);
+  for (auto &impl : str_impls) {
+    record (impl.name, "LargeKeyIns", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.insert (keys.data (), n); }, n));
+    void *h = impl.build (keys.data (), n);
+    record (impl.name, "LargeKeyGet", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.lookup (h, keys.data (), n); }, n));
+    impl.free_fn (h);
+  }
 }
 
 // ===== LargeValue: insert + lookup with ~96-byte value struct =====
@@ -1121,19 +1313,14 @@ static void bench_large_value (int n, const char *sz) {
             },
             n));
 
-  record ("C ixhtab", "LargeValIns", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_lv_insert (keys.data (), n); }, n));
-  void *cxlv = c_ixhtab_lv_build (keys.data (), n);
-  record ("C ixhtab", "LargeValGet", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_lv_lookup (cxlv, keys.data (), n); }, n));
-  c_ixhtab_lv_free (cxlv);
-
-  record ("C ihtab", "LargeValIns", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_lv_insert (keys.data (), n); }, n));
-  void *cilv = c_ihtab_lv_build (keys.data (), n);
-  record ("C ihtab", "LargeValGet", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_lv_lookup (cilv, keys.data (), n); }, n));
-  c_ihtab_lv_free (cilv);
+  for (auto &impl : lv_impls) {
+    record (impl.name, "LargeValIns", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.insert (keys.data (), n); }, n));
+    void *h = impl.build (keys.data (), n);
+    record (impl.name, "LargeValGet", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.lookup (h, keys.data (), n); }, n));
+    impl.free_fn (h);
+  }
 }
 
 // ===== Growth: insert without pre-allocation =====
@@ -1213,18 +1400,17 @@ static void bench_growth (int n, const char *sz) {
             },
             n));
 
-  record ("C ixhtab", "GrowthNoPre", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_growth (keys.data (), n, 0); }, n));
-  record ("C ihtab", "GrowthNoPre", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_growth (keys.data (), n, 0); }, n));
-  record ("C ixhtab", "GrowthPrealloc", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ixhtab_str_growth (keys.data (), n, 1); }, n));
-  record ("C ihtab", "GrowthPrealloc", sz, n,
-          bench_ns_op ([&] { do_not_optimize = c_ihtab_str_growth (keys.data (), n, 1); }, n));
+  for (auto &impl : str_impls) {
+    record (impl.name, "GrowthNoPre", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.growth (keys.data (), n, 0); }, n));
+    record (impl.name, "GrowthPrealloc", sz, n,
+            bench_ns_op ([&] { do_not_optimize = impl.growth (keys.data (), n, 1); }, n));
+  }
 }
 
 static void print_geomean () {
-  const char *impls[] = {"absl", "umap", "C++ ixhtab", "C++ ihtab", "C ixhtab", "C ihtab"};
+  const char *impls[] = {"absl", "umap", "C++ ixhtab", "C++ ihtab", "C ixhtab", "C ihtab",
+                         "C++ ixhtab-v0", "C++ ihtab-v0", "C ixhtab-v0", "C ihtab-v0"};
   printf ("Geometric mean (ns/op):\n");
   double absl_gm = 0;
   for (auto impl : impls) {
@@ -1308,3 +1494,5 @@ int main (int argc, char *argv[]) {
   printf ("do_not_optimize = %zu\n", (size_t) do_not_optimize);
   return 0;
 }
+
+#endif /* !USE_V0 */

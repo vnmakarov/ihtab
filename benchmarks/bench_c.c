@@ -1,7 +1,12 @@
 #include <stdio.h>
 #include <string.h>
+#ifdef USE_V0
+#include "ihtab-v0.h"
+#include "ixhtab-v0.h"
+#else
 #include "ihtab.h"
 #include "ixhtab.h"
+#endif
 #include "vmum.h"
 #include "bench_c.h"
 
@@ -298,9 +303,18 @@ DEFINE_IXHT (ci_lv, ci_lv_h, ci_lv_e)
 
 /* ===== Expand all wrappers ===== */
 
+#ifdef USE_V0
+GEN_INT (c_ihtab_v0, iht, ci_int, IHT)
+GEN_INT (c_ixhtab_v0, ixht, ci_int, IXHT)
+GEN_STR (c_ihtab_v0, iht, ci_str, IHT)
+GEN_STR (c_ixhtab_v0, ixht, ci_str, IXHT)
+GEN_LV (c_ihtab_v0, iht, ci_lv, IHT)
+GEN_LV (c_ixhtab_v0, ixht, ci_lv, IXHT)
+#else
 GEN_INT (c_ihtab, iht, ci_int, IHT)
 GEN_INT (c_ixhtab, ixht, ci_int, IXHT)
 GEN_STR (c_ihtab, iht, ci_str, IHT)
 GEN_STR (c_ixhtab, ixht, ci_str, IXHT)
 GEN_LV (c_ihtab, iht, ci_lv, IHT)
 GEN_LV (c_ixhtab, ixht, ci_lv, IXHT)
+#endif

@@ -75,7 +75,8 @@ for row in rows:
     key = (row["Benchmark"], row["Size"])
     data[key][row["Implementation"]] = float(row["ns/op"])
 
-impls = ["absl", "C++ ixhtab", "C++ ihtab", "C ixhtab", "C ihtab"]
+impls = ["absl", "C++ ixhtab", "C++ ihtab", "C ixhtab", "C ihtab",
+         "C++ ixhtab-v0", "C++ ihtab-v0", "C ixhtab-v0", "C ihtab-v0"]
 
 lines = []
 lines.append("Hash Table Comparison Report")
@@ -84,9 +85,9 @@ lines.append(f"Data: {csv_path}")
 lines.append("")
 hdr = f"{'Benchmark':<14} {'Size':<7}"
 for im in impls:
-    hdr += f" {im:>11}"
+    hdr += f" {im:>15}"
 for im in impls[1:]:
-    hdr += f"  {im+'/absl':>14}"
+    hdr += f"  {im+'/absl':>18}"
 lines.append(hdr)
 lines.append("-" * len(hdr))
 
@@ -102,15 +103,15 @@ for (bm, sz) in sorted_keys:
     for im in impls:
         v = d.get(im, 0)
         if v > 0:
-            row += f" {v:>11.1f}"
+            row += f" {v:>15.1f}"
         else:
-            row += f" {'N/A':>11}"
+            row += f" {'N/A':>15}"
     for im in impls[1:]:
         v = d.get(im, 0)
         if a > 0 and v > 0:
-            row += f"  {v/a:>12.3f}x"
+            row += f"  {v/a:>16.3f}x"
         else:
-            row += f"  {'N/A':>14}"
+            row += f"  {'N/A':>18}"
     lines.append(row)
     if a > 0:
         for im in impls:
@@ -131,11 +132,11 @@ lines.append("Geometric mean (ns/op):")
 for im in impls:
     g = gm[im]
     if g <= 0:
-        lines.append(f"  {im+':':14s} N/A")
+        lines.append(f"  {im+':':18s} N/A")
     elif im == "absl":
-        lines.append(f"  {im+':':14s} {g:.1f}")
+        lines.append(f"  {im+':':18s} {g:.1f}")
     else:
-        lines.append(f"  {im+':':14s} {g:.1f}  ({g/gm_a:.3f}x)")
+        lines.append(f"  {im+':':18s} {g:.1f}  ({g/gm_a:.3f}x)")
 lines.append("")
 lines.append("Ratio < 1.0 means faster than absl. Ratio > 1.0 means slower.")
 
@@ -168,7 +169,9 @@ try:
     w = 0.8 / ni
     colors = {"absl": "#999999",
               "C++ ixhtab": "#e69f00", "C++ ihtab": "#0072b2",
-              "C ixhtab": "#cc79a7", "C ihtab": "#009e73"}
+              "C ixhtab": "#cc79a7", "C ihtab": "#009e73",
+              "C++ ixhtab-v0": "#f0e442", "C++ ihtab-v0": "#56b4e9",
+              "C ixhtab-v0": "#d55e00", "C ihtab-v0": "#648fff"}
 
     # Chart 1: Absolute times.
     chart_w = max(18, n * 0.9)
