@@ -245,28 +245,33 @@ index arrays).  Results on AMD 9900x:
 
 ### N=1M (1 000 000 keys, 10 iterations)
 
-| Metric                | absl            | ihtab           | ihtab-v0        | Best                     |
-|-----------------------|-----------------|-----------------|-----------------|--------------------------|
-| Cycles                | 796.1M          | 300.2M          | 373.1M          | **ihtab** 62% fewer      |
-| Instructions          | 504.0M          | 442.8M          | 557.1M          | **ihtab** 21% fewer      |
-| IPC                   | 0.63            | 1.47            | 1.49            | **ihtab-v0** 136% higher |
-| L1-dcache miss rate   | 23.2%           | 24.5%           | 15.3%           | **ihtab-v0** 38% fewer   |
-| Branch misses         | 691.0K (1.47%)  | 344.1K (0.65%)  | 389.1K (0.75%)  | **ihtab** 50% fewer      |
-| dTLB miss rate        | 28.1%           | 4.9%            | 2.6%            | **ihtab-v0** 91% fewer   |
+| Metric                | absl            | ihtab           | ihtab-v0        | Best                    |
+|-----------------------|-----------------|-----------------|-----------------|-------------------------|
+| Cycles                | 723.0M          | 265.8M          | 325.5M          | **ihtab** 63% fewer     |
+| Instructions          | 519.7M          | 506.3M          | 539.9M          | **ihtab** 6% fewer      |
+| IPC                   | 0.72            | 1.90            | 1.66            | **ihtab** 165% higher   |
+| L1-dcache miss rate   | 25.0%           | 24.5%           | 15.4%           | **ihtab-v0** 39% fewer  |
+| L1-icache miss rate   | 6.5%            | 5.9%            | 5.8%            | **ihtab-v0** 11% fewer  |
+| LLC miss rate         | 47.5%           | 49.3%           | 52.5%           | **absl** 10% fewer      |
+| Branch misses         | 806.4K (1.79%)  | 446.6K (0.91%)  | 408.8K (0.78%)  | **ihtab-v0** 49% fewer  |
+| dTLB miss rate        | 27.4%           | 4.7%            | 2.7%            | **ihtab-v0** 90% fewer  |
 
 
 ### N=20M (20 000 000 keys, 10 iterations)
 
 | Metric                | absl            | ihtab           | ihtab-v0        | Best                    |
 |-----------------------|-----------------|-----------------|-----------------|-------------------------|
-| Cycles                | 32.6B           | 29.4B           | 42.5B           | **ihtab** 31% fewer     |
-| Instructions          | 10.6B           | 10.3B           | 12.0B           | **ihtab** 14% fewer     |
-| IPC                   | 0.32            | 0.35            | 0.28            | **ihtab** 24% higher    |
-| L1-dcache miss rate   | 19.9%           | 21.1%           | 15.1%           | **ihtab-v0** 28% fewer  |
-| Branch misses         | 13.1M (1.46%)   | 5.1M (0.46%)    | 5.0M (0.46%)    | **ihtab-v0** 61% fewer  |
-| dTLB miss rate        | 85.7%           | 92.5%           | 80.0%           | **ihtab-v0** 14% fewer  |
+| Cycles                | 30.1B           | 26.6B           | 38.8B           | **ihtab** 32% fewer     |
+| Instructions          | 10.7B           | 10.3B           | 12.0B           | **ihtab** 14% fewer     |
+| IPC                   | 0.35            | 0.39            | 0.31            | **ihtab** 25% higher    |
+| L1-dcache miss rate   | 19.5%           | 21.1%           | 14.9%           | **ihtab-v0** 30% fewer  |
+| L1-icache miss rate   | 9.8%            | 4.7%            | 5.0%            | **ihtab** 52% fewer     |
+| LLC miss rate         | 58.6%           | 51.3%           | 55.1%           | **ihtab** 12% fewer     |
+| Branch misses         | 12.9M (1.45%)   | 5.1M (0.46%)    | 4.9M (0.45%)    | **ihtab-v0** 62% fewer  |
+| dTLB miss rate        | 85.8%           | 92.7%           | 89.4%           | **absl** 7% fewer       |
 
-At 1M keys the table fits in cache — both ihtab variants dominate on
-cycles and TLB.  At 20M keys the working set exceeds cache and the
-interleaved layout (ihtab) wins on cycles because each group lookup
-touches one contiguous region instead of two separate arrays.
+At 1M keys the table fits in L2 cache — both ihtab variants dominate
+on cycles and TLB.  At 20M keys the working set exceeds the LLC and
+the interleaved layout (ihtab) wins on cycles and on memory access
+because each group lookup touches one contiguous region instead of two
+separate arrays.
