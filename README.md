@@ -194,31 +194,43 @@ Geometric mean on AMD 9900x across all benchmarks (lower is better):
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   7.0 |  1.000x |
-| C++ ixhtab     |   6.4 |  0.911x |
-| C++ ihtab      |   4.4 |  0.628x |
-| C ixhtab       |   6.3 |  0.897x |
-| C ihtab        |   4.1 |  0.587x |
+| absl           |   6.8 |  1.000x |
+| C++ ixhtab     |   6.4 |  0.940x |
+| C++ ihtab      |   4.2 |  0.628x |
+| C ixhtab       |   6.3 |  0.933x |
+| C ihtab        |   3.9 |  0.576x |
+| C++ ixhtab-v0  |   6.5 |  0.958x |
+| C++ ihtab-v0   |   4.0 |  0.597x |
+| C ixhtab-v0    |   6.3 |  0.932x |
+| C ihtab-v0     |   4.1 |  0.601x |
 
 Geometric mean on Intel 270K+ across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   8.5 |  1.000x |
-| C++ ixhtab     |   7.3 |  0.863x |
-| C++ ihtab      |   5.1 |  0.603x |
-| C ixhtab       |   7.2 |  0.843x |
-| C ihtab        |   4.9 |  0.576x |
+| absl           |   8.9 |  1.000x |
+| C++ ixhtab     |   7.4 |  0.836x |
+| C++ ihtab      |   5.3 |  0.601x |
+| C ixhtab       |   7.3 |  0.825x |
+| C ihtab        |   5.1 |  0.575x |
+| C++ ixhtab-v0  |   7.2 |  0.809x |
+| C++ ihtab-v0   |   4.8 |  0.544x |
+| C ixhtab-v0    |   7.5 |  0.843x |
+| C ihtab-v0     |   5.0 |  0.563x |
 
 Geometric mean on Apple M4 across all benchmarks:
 
 | Implementation | ns/op | vs absl |
 |----------------|------:|--------:|
-| absl           |   5.9 |  1.000x |
-| C++ ixhtab     |   6.4 |  1.080x |
-| C++ ihtab      |   3.7 |  0.631x |
-| C ixhtab       |   5.3 |  0.889x |
-| C ihtab        |   3.6 |  0.601x |
+| absl           |   6.3 |  1.000x |
+| C++ ixhtab     |   6.1 |  0.956x |
+| C++ ihtab      |   4.2 |  0.661x |
+| C ixhtab       |   5.6 |  0.882x |
+| C ihtab        |   3.8 |  0.598x |
+| C++ ixhtab-v0  |   5.6 |  0.888x |
+| C++ ihtab-v0   |   4.0 |  0.637x |
+| C ixhtab-v0    |   5.7 |  0.902x |
+| C ihtab-v0     |   4.0 |  0.634x |
 
 ## Profile
 
@@ -235,23 +247,24 @@ index arrays).  Results on AMD 9900x:
 
 | Metric                | absl            | ihtab           | ihtab-v0        | Best                     |
 |-----------------------|-----------------|-----------------|-----------------|--------------------------|
-| Cycles                | 758.1M          | 344.7M          | 331.3M          | **ihtab-v0** 56% fewer   |
-| Instructions          | 498.8M          | 440.9M          | 566.8M          | **ihtab** 22% fewer      |
-| IPC                   | 0.66            | 1.28            | 1.71            | **ihtab-v0** 160% higher |
-| L1-dcache miss rate   | 21.3%           | 24.6%           | 15.7%           | **ihtab-v0** 36% fewer   |
-| Branch misses         | 722.2K (1.51%)  | 387.2K (0.69%)  | 360.0K (0.70%)  | **ihtab-v0** 50% fewer   |
-| dTLB miss rate        | 27.9%           | 5.1%            | 2.7%            | **ihtab-v0** 90% fewer   |
+| Cycles                | 796.1M          | 300.2M          | 373.1M          | **ihtab** 62% fewer      |
+| Instructions          | 504.0M          | 442.8M          | 557.1M          | **ihtab** 21% fewer      |
+| IPC                   | 0.63            | 1.47            | 1.49            | **ihtab-v0** 136% higher |
+| L1-dcache miss rate   | 23.2%           | 24.5%           | 15.3%           | **ihtab-v0** 38% fewer   |
+| Branch misses         | 691.0K (1.47%)  | 344.1K (0.65%)  | 389.1K (0.75%)  | **ihtab** 50% fewer      |
+| dTLB miss rate        | 28.1%           | 4.9%            | 2.6%            | **ihtab-v0** 91% fewer   |
+
 
 ### N=20M (20 000 000 keys, 10 iterations)
 
 | Metric                | absl            | ihtab           | ihtab-v0        | Best                    |
 |-----------------------|-----------------|-----------------|-----------------|-------------------------|
-| Cycles                | 37.2B           | 30.6B           | 44.7B           | **ihtab** 32% fewer     |
-| Instructions          | 10.6B           | 10.3B           | 11.9B           | **ihtab** 14% fewer     |
-| IPC                   | 0.29            | 0.34            | 0.27            | **ihtab** 26% higher    |
-| L1-dcache miss rate   | 19.6%           | 21.2%           | 14.9%           | **ihtab-v0** 30% fewer  |
-| Branch misses         | 13.0M (1.46%)   | 5.2M (0.46%)    | 5.2M (0.47%)    | **ihtab** 60% fewer     |
-| dTLB miss rate        | 85.9%           | 91.4%           | 89.5%           | **absl** 6% fewer       |
+| Cycles                | 32.6B           | 29.4B           | 42.5B           | **ihtab** 31% fewer     |
+| Instructions          | 10.6B           | 10.3B           | 12.0B           | **ihtab** 14% fewer     |
+| IPC                   | 0.32            | 0.35            | 0.28            | **ihtab** 24% higher    |
+| L1-dcache miss rate   | 19.9%           | 21.1%           | 15.1%           | **ihtab-v0** 28% fewer  |
+| Branch misses         | 13.1M (1.46%)   | 5.1M (0.46%)    | 5.0M (0.46%)    | **ihtab-v0** 61% fewer  |
+| dTLB miss rate        | 85.7%           | 92.5%           | 80.0%           | **ihtab-v0** 14% fewer  |
 
 At 1M keys the table fits in cache — both ihtab variants dominate on
 cycles and TLB.  At 20M keys the working set exceeds cache and the
